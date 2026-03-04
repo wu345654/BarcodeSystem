@@ -6,6 +6,12 @@ Windows版本打包脚本
 import os
 import subprocess
 import shutil
+import platform
+
+# 检查系统是否为Windows
+if platform.system() != 'Windows' and os.name != 'nt':
+    print("警告：此脚本在非Windows系统上运行，可能会出现兼容性问题")
+    print("建议在Windows系统上运行此脚本")
 
 # 清理旧的构建文件
 def clean_build():
@@ -20,7 +26,10 @@ def clean_build():
 # 安装依赖
 def install_dependencies():
     print("📦 安装依赖...")
-    subprocess.run(['pip', 'install', 'flask', 'flask-cors', 'python-barcode', 'Pillow==9.5.0'], check=True)
+    if os.path.exists('requirements.txt'):
+        subprocess.run(['pip', 'install', '-r', 'requirements.txt'], check=True)
+    else:
+        subprocess.run(['pip', 'install', 'flask', 'flask-cors', 'python-barcode', 'Pillow'], check=True)
     subprocess.run(['pip', 'install', 'pyinstaller'], check=True)
     print("✅ 依赖安装完成")
 

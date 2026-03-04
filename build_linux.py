@@ -12,8 +12,8 @@ import platform
 
 # 检查系统是否为Linux
 if platform.system() != 'Linux':
-    print("错误：此脚本仅适用于Linux系统！")
-    sys.exit(1)
+    print("警告：此脚本在非Linux系统上运行，可能会出现兼容性问题")
+    print("建议在Linux系统上运行此脚本")
 
 def run_command(cmd, cwd=None):
     """运行命令并返回结果"""
