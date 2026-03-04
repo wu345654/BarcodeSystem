@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-订单条码管理系统启动脚本
+Order Barcode Management System Startup Script
 """
 import os
 import sys
@@ -9,64 +9,63 @@ import time
 from threading import Timer
 
 def open_browser():
-    """自动打开浏览器"""
+    """Auto open browser"""
     time.sleep(1.5)
     webbrowser.open('http://127.0.0.1:5000')
 
 def main():
-    """主函数"""
+    """Main function"""
     print("=" * 60)
-    print("订单条码管理系统")
+    print("Order Barcode Management System")
     print("=" * 60)
     print()
     
-    # 检查依赖
+    # Check dependencies
     try:
         from flask import Flask
         from flask_cors import CORS
         import barcode
         from PIL import Image
-        print("[OK] 依赖检查通过")
+        print("[OK] Dependencies check passed")
     except ImportError as e:
-        print(f"[ERROR] 缺少依赖: {e}")
-        print("请先安装依赖: pip install -r requirements.txt")
+        print(f"[ERROR] Missing dependency: {e}")
+        print("Please install dependencies: pip install -r requirements.txt")
         sys.exit(1)
     
-    # 初始化数据库
-    print("[INFO] 初始化数据库...")
+    # Initialize database
+    print("[INFO] Initializing database...")
     from database import init_database
     init_database()
-    print("[OK] 数据库初始化完成")
+    print("[OK] Database initialized")
     print()
     
-    # 创建静态目录
+    # Create static directory
     static_dir = os.path.join(os.path.dirname(__file__), 'static', 'barcodes')
     if not os.path.exists(static_dir):
         os.makedirs(static_dir)
-        print(f"[OK] 创建条码目录: {static_dir}")
+        print(f"[OK] Created barcode directory: {static_dir}")
     
     print()
-    print("[INFO] 启动服务器...")
-    print("[INFO] 访问地址: http://127.0.0.1:888")
+    print("[INFO] Starting server...")
+    print("[INFO] Access URL: http://127.0.0.1:888")
     print()
-    print("功能说明:")
-    print("  • 订单管理: 创建、编辑、删除订单")
-    print("  • 条码生成: 根据订单数量自动生成唯一条码")
-    print("  • 条码扫描: 支持扫描枪和手动输入，防止重复扫描")
-    print("  • 扫描记录: 查看所有扫描历史")
+    print("Features:")
+    print("  - Order Management: Create, edit, delete orders")
+    print("  - Barcode Generation: Auto-generate unique barcodes")
+    print("  - Barcode Scanning: Support scanner and manual input")
+    print("  - Scan Records: View all scan history")
     print()
-    print("按 Ctrl+C 停止服务器")
+    print("Press Ctrl+C to stop server")
     print("=" * 60)
     print()
     
-    # 自动打开浏览器
+    # Auto open browser
     def open_browser_888():
         time.sleep(1.5)
         webbrowser.open('http://127.0.0.1:888')
     Timer(1, open_browser_888).start()
     
-def main():
-    # 启动Flask应用
+    # Start Flask app
     from app import app
     app.run(debug=True, host='0.0.0.0', port=888, use_reloader=False)
 
