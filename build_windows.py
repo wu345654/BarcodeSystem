@@ -8,6 +8,11 @@ import subprocess
 import shutil
 import platform
 
+# Get absolute paths
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DIST_DIR = os.path.join(BASE_DIR, 'dist', 'windows')
+BARCODE_DIR = os.path.join(DIST_DIR, 'BarcodeSystem')
+
 # Check if running on Windows
 if platform.system() != 'Windows' and os.name != 'nt':
     print("Warning: This script is not running on Windows, compatibility issues may occur")
@@ -15,19 +20,24 @@ if platform.system() != 'Windows' and os.name != 'nt':
 
 # Clean old build files
 def clean_build():
-    if os.path.exists('build'):
-        shutil.rmtree('build')
-    if os.path.exists('dist'):
-        shutil.rmtree('dist')
-    if os.path.exists('BarcodeSystem_Windows.spec'):
-        os.remove('BarcodeSystem_Windows.spec')
+    build_dir = os.path.join(BASE_DIR, 'build')
+    dist_dir = os.path.join(BASE_DIR, 'dist')
+    spec_file = os.path.join(BASE_DIR, 'BarcodeSystem.spec')
+    
+    if os.path.exists(build_dir):
+        shutil.rmtree(build_dir)
+    if os.path.exists(dist_dir):
+        shutil.rmtree(dist_dir)
+    if os.path.exists(spec_file):
+        os.remove(spec_file)
     print("[OK] Clean completed")
 
 # Install dependencies
 def install_dependencies():
     print("[INFO] Installing dependencies...")
-    if os.path.exists('requirements.txt'):
-        subprocess.run(['pip', 'install', '-r', 'requirements.txt'], check=True)
+    requirements_file = os.path.join(BASE_DIR, 'requirements.txt')
+    if os.path.exists(requirements_file):
+        subprocess.run(['pip', 'install', '-r', requirements_file], check=True)
     else:
         subprocess.run(['pip', 'install', 'flask', 'flask-cors', 'python-barcode', 'Pillow'], check=True)
     subprocess.run(['pip', 'install', 'pyinstaller'], check=True)
@@ -36,47 +46,69 @@ def install_dependencies():
 # Build executable
 def build_executable():
     print("[INFO] Building executable...")
-    # 打印当前工作目录
-    print(f"[DEBUG] Current working directory: {os.getcwd()}")
+    print(f"[DEBUG] Base directory: {BASE_DIR}")
+    print(f"[DEBUG] Dist directory: {DIST_DIR}")
+    
+    # Create output directories
+    os.makedirs(DIST_DIR, exist_ok=True)
+    print(f"[DEBUG] Created dist directory: {DIST_DIR}")
+    
     # Choose correct separator based on OS
-    import sys
-    if sys.platform.startswith('win'):
+    if platform.system() == 'Windows':
         sep = ';'
     else:
         sep = ':'
-    # 创建输出目录
-    os.makedirs('dist/windows', exist_ok=True)
-    print(f"[DEBUG] Created directory: dist/windows")
-    print(f"[DEBUG] Directory exists: {os.path.exists('dist/windows')}")
-    # 使用更保守的配置，避免 --onefile 可能的问题
+    
+    # Build command with absolute paths
+    start_py = os.path.join(BASE_DIR, 'start.py')
+    templates_dir = os.path.join(BASE_DIR, 'templates')
+    static_dir = os.path.join(BASE_DIR, 'static')
+    icon_file = os.path.join(BASE_DIR, 'icon.ico')
+    
     cmd = [
         'pyinstaller',
         '--name=BarcodeSystem',
-        '--distpath', 'dist/windows',
-        '--add-data', f'templates{sep}templates',
-        '--add-data', f'static{sep}static',
-        '--icon=icon.ico',
+        '--distpath', DIST_DIR,
+        '--add-data', f'{templates_dir}{sep}templates',
+        '--add-data', f'{static_dir}{sep}static',
+        '--icon', icon_file,
         '--clean',
-        '--log-level', 'DEBUG',
-        'start.py'
+        start_py
     ]
+    
     print(f"[DEBUG] Running command: {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
-    # 检查构建结果
-    print(f"[DEBUG] After build - dist/windows exists: {os.path.exists('dist/windows')}")
-    if os.path.exists('dist/windows'):
-        print(f"[DEBUG] Contents of dist/windows: {os.listdir('dist/windows')}")
-        if os.path.exists('dist/windows/BarcodeSystem'):
-            print(f"[DEBUG] Contents of dist/windows/BarcodeSystem: {os.listdir('dist/windows/BarcodeSystem')}")
+    
+    # Run with shell=True for Windows compatibility
+    subprocess.run(' '.join(cmd), shell=True, check=True, cwd=BASE_DIR)
+    
+    # Check build results
+    print(f"[DEBUG] After build - dist directory exists: {os.path.exists(DIST_DIR)}")
+    if os.path.exists(DIST_DIR):
+        print(f"[DEBUG] Contents of dist directory: {os.listdir(DIST_DIR)}")
+        # Check if BarcodeSystem directory was created
+        if os.path.exists(BARCODE_DIR):
+            print(f"[DEBUG] BarcodeSystem directory exists: {os.path.exists(BARCODE_DIR)}")
+            print(f"[DEBUG] Contents: {os.listdir(BARCODE_DIR)}")
+        else:
+            # Check if executable was created directly in dist/windows
+            print(f"[DEBUG] Checking direct contents of dist/windows")
+            for item in os.listdir(DIST_DIR):
+                item_path = os.path.join(DIST_DIR, item)
+                if os.path.isfile(item_path) and item.endswith('.exe'):
+                    print(f"[DEBUG] Found executable: {item}")
     print("[OK] Build completed")
 
 # Copy database file
 def copy_database():
-    if os.path.exists('order_system.db'):
-        # 确保目标目录存在
-        os.makedirs('dist/windows/BarcodeSystem', exist_ok=True)
-        shutil.copy('order_system.db', 'dist/windows/BarcodeSystem/')
-        print("[OK] Database copied")
+    db_file = os.path.join(BASE_DIR, 'order_system.db')
+    if os.path.exists(db_file):
+        # Ensure target directory exists
+        os.makedirs(BARCODE_DIR, exist_ok=True)
+        dest_db = os.path.join(BARCODE_DIR, 'order_system.db')
+        shutil.copy(db_file, dest_db)
+        print(f"[OK] Database copied to: {dest_db}")
+    else:
+        print("[WARNING] order_system.db not found, skipping copy")
 
 # Main function
 def main():
@@ -90,13 +122,39 @@ def main():
         build_executable()
         copy_database()
         
-        print("\n[SUCCESS] Build successful!")
-        print("Executable location: dist/windows/BarcodeSystem/BarcodeSystem.exe")
-        print("\nUsage:")
-        print("1. Double-click dist/windows/BarcodeSystem/BarcodeSystem.exe to run")
-        print("2. System will open browser at http://127.0.0.1:888")
+        # Check final result
+        if os.path.exists(BARCODE_DIR):
+            exe_path = os.path.join(BARCODE_DIR, 'BarcodeSystem.exe')
+            if os.path.exists(exe_path):
+                print("\n[SUCCESS] Build successful!")
+                print(f"Executable location: {exe_path}")
+                print("\nUsage:")
+                print(f"1. Double-click {exe_path} to run")
+                print("2. System will open browser at http://127.0.0.1:888")
+            else:
+                print("\n[WARNING] Executable not found in expected location")
+                print(f"Contents of {BARCODE_DIR}: {os.listdir(BARCODE_DIR)}")
+        else:
+            # Check if executable is in dist/windows directly
+            if os.path.exists(DIST_DIR):
+                for item in os.listdir(DIST_DIR):
+                    if item.endswith('.exe'):
+                        exe_path = os.path.join(DIST_DIR, item)
+                        print("\n[SUCCESS] Build successful!")
+                        print(f"Executable location: {exe_path}")
+                        print("\nUsage:")
+                        print(f"1. Double-click {exe_path} to run")
+                        print("2. System will open browser at http://127.0.0.1:888")
+                        break
+                else:
+                    print("\n[ERROR] Executable not found")
+                    print(f"Contents of {DIST_DIR}: {os.listdir(DIST_DIR)}")
+            else:
+                print("\n[ERROR] Dist directory not found")
     except Exception as e:
         print(f"[ERROR] Build failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     main()
