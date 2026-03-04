@@ -36,6 +36,8 @@ def install_dependencies():
 # Build executable
 def build_executable():
     print("[INFO] Building executable...")
+    # 打印当前工作目录
+    print(f"[DEBUG] Current working directory: {os.getcwd()}")
     # Choose correct separator based on OS
     import sys
     if sys.platform.startswith('win'):
@@ -44,6 +46,8 @@ def build_executable():
         sep = ':'
     # 创建输出目录
     os.makedirs('dist/windows', exist_ok=True)
+    print(f"[DEBUG] Created directory: dist/windows")
+    print(f"[DEBUG] Directory exists: {os.path.exists('dist/windows')}")
     # 使用更保守的配置，避免 --onefile 可能的问题
     cmd = [
         'pyinstaller',
@@ -56,7 +60,14 @@ def build_executable():
         '--log-level', 'DEBUG',
         'start.py'
     ]
+    print(f"[DEBUG] Running command: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
+    # 检查构建结果
+    print(f"[DEBUG] After build - dist/windows exists: {os.path.exists('dist/windows')}")
+    if os.path.exists('dist/windows'):
+        print(f"[DEBUG] Contents of dist/windows: {os.listdir('dist/windows')}")
+        if os.path.exists('dist/windows/BarcodeSystem'):
+            print(f"[DEBUG] Contents of dist/windows/BarcodeSystem: {os.listdir('dist/windows/BarcodeSystem')}")
     print("[OK] Build completed")
 
 # Copy database file
