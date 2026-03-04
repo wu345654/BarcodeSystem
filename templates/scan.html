@@ -4,8 +4,12 @@
 
 {% block content %}
 <!-- 音频元素 -->
-<audio id="successSound" preload="auto"></audio>
-<audio id="errorSound" preload="auto"></audio>
+<audio id="successSound" preload="auto">
+    <source src="/mic/ok.wav" type="audio/wav">
+</audio>
+<audio id="errorSound" preload="auto">
+    <source src="/mic/error.wav" type="audio/wav">
+</audio>
 
 <div class="scan-area">
     <h1 style="margin-bottom: 10px;">📷 条码扫描</h1>
@@ -170,15 +174,10 @@ function generateTone(frequency, duration, type = 'sine', volume = 0.1) {
 // 播放提示音
 function playSound(soundId) {
     try {
-        if (soundId === 'successSound') {
-            // 成功提示音：上升音调，增强音量
-            generateTone(800, 0.3, 'sine', 0.15);
-            setTimeout(() => generateTone(1200, 0.2, 'sine', 0.2), 300);
-        } else if (soundId === 'errorSound') {
-            // 错误提示音：更强烈的下降音调
-            generateTone(1800, 0.4, 'square', 0.25); // 更高频率、更长时间、更大音量、方波
-            setTimeout(() => generateTone(1000, 0.3, 'square', 0.2), 400);
-            setTimeout(() => generateTone(600, 0.2, 'square', 0.15), 700);
+        const sound = document.getElementById(soundId);
+        if (sound) {
+            sound.currentTime = 0; // 重置音频
+            sound.play().catch(e => console.log('无法播放音频:', e));
         }
     } catch (e) {
         console.log('无法播放音频:', e);
