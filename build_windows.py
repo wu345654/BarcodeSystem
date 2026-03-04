@@ -69,39 +69,36 @@ def build_executable():
         print(f"[ERROR] Failed to create dist directory: {e}")
         raise
     
-    # Choose correct separator based on OS
+    # For Windows, use simple command without complex options
     if platform.system() == 'Windows':
-        sep = ';'
+        print("[DEBUG] Running on Windows, using simple PyInstaller command")
+        cmd = f'pyinstaller --name BarcodeSystem --distpath "{DIST_DIR}" --clean "{start_py}"'
     else:
-        sep = ':'
+        print("[DEBUG] Running on non-Windows, using standard PyInstaller command")
+        # Choose correct separator based on OS
+        sep = ';'
+        cmd = f'pyinstaller --name BarcodeSystem --distpath "{DIST_DIR}" --add-data "{templates_dir}{sep}templates" --add-data "{static_dir}{sep}static" --icon "{icon_file}" --clean "{start_py}"'
     
-    # Build command with absolute paths
-    cmd = [
-        'pyinstaller',
-        '--name=BarcodeSystem',
-        '--distpath', DIST_DIR,
-        '--add-data', f'{templates_dir}{sep}templates',
-        '--add-data', f'{static_dir}{sep}static',
-        '--icon', icon_file,
-        '--clean',
-        start_py
-    ]
-    
-    print(f"[DEBUG] Running command: {' '.join(cmd)}")
+    print(f"[DEBUG] Running command: {cmd}")
     
     # Run with shell=True for Windows compatibility
     try:
-        result = subprocess.run(' '.join(cmd), shell=True, capture_output=True, text=True, cwd=BASE_DIR)
-        print(f"[DEBUG] Command exit code: {result.returncode}")
-        if result.stdout:
-            print(f"[DEBUG] Command stdout: {result.stdout[:500]}...")  # Limit output
-        if result.stderr:
-            print(f"[DEBUG] Command stderr: {result.stderr[:500]}...")  # Limit output
-        if result.returncode != 0:
-            raise Exception(f"PyInstaller failed with exit code {result.returncode}")
+        # Run without capture_output to see real-time output
+        print("[DEBUG] Starting PyInstaller...")
+        subprocess.run(cmd, shell=True, check=True, cwd=BASE_DIR)
+        print("[DEBUG] PyInstaller completed successfully")
     except Exception as e:
         print(f"[ERROR] Failed to run PyInstaller: {e}")
-        raise
+        # Try a very simple command as fallback
+        print("[DEBUG] Trying fallback command...")
+        fallback_cmd = f'pyinstaller --name BarcodeSystem "{start_py}"'
+        print(f"[DEBUG] Fallback command: {fallback_cmd}")
+        try:
+            subprocess.run(fallback_cmd, shell=True, check=True, cwd=BASE_DIR)
+            print("[DEBUG] Fallback command completed successfully")
+        except Exception as fallback_e:
+            print(f"[ERROR] Fallback command also failed: {fallback_e}")
+            raise
     
     # Check build results
     print(f"[DEBUG] After build - dist directory exists: {os.path.exists(DIST_DIR)}")
@@ -118,8 +115,15 @@ def build_executable():
                 item_path = os.path.join(DIST_DIR, item)
                 if os.path.isfile(item_path) and item.endswith('.exe'):
                     print(f"[DEBUG] Found executable: {item}")
+                elif os.path.isdir(item_path):
+                    print(f"[DEBUG] Found directory: {item}")
+                    print(f"[DEBUG] Contents of {item}: {os.listdir(item_path)}")
     else:
         print(f"[ERROR] Dist directory does not exist after build")
+        # Check if dist directory was created elsewhere
+        print(f"[DEBUG] Checking current directory: {os.listdir('.')}")
+        if os.path.exists('dist'):
+            print(f"[DEBUG] Found dist directory in current path: {os.listdir('dist')}")
     print("[OK] Build completed")
 
 # Copy database file
