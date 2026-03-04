@@ -34,9 +34,9 @@ print("=" * 60)
 for barcode in barcodes:
     image_file = barcode['image_path'].replace('/static/barcodes/', 'static/barcodes/')
     if os.path.exists(image_file):
-        print(f"✅ 条码图片存在: {image_file}")
+        print(f"[OK] 条码图片存在: {image_file}")
     else:
-        print(f"❌ 条码图片不存在: {image_file}")
+        print(f"[ERROR] 条码图片不存在: {image_file}")
 
 # 测试3：测试条码图片路径
 print("\n测试3：测试条码图片路径")

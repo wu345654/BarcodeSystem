@@ -16,7 +16,7 @@ def open_browser():
 def main():
     """主函数"""
     print("=" * 60)
-    print("📦 订单条码管理系统")
+    print("订单条码管理系统")
     print("=" * 60)
     print()
     
@@ -26,28 +26,28 @@ def main():
         from flask_cors import CORS
         import barcode
         from PIL import Image
-        print("✅ 依赖检查通过")
+        print("[OK] 依赖检查通过")
     except ImportError as e:
-        print(f"❌ 缺少依赖: {e}")
+        print(f"[ERROR] 缺少依赖: {e}")
         print("请先安装依赖: pip install -r requirements.txt")
         sys.exit(1)
     
     # 初始化数据库
-    print("🔄 初始化数据库...")
+    print("[INFO] 初始化数据库...")
     from database import init_database
     init_database()
-    print("✅ 数据库初始化完成")
+    print("[OK] 数据库初始化完成")
     print()
     
     # 创建静态目录
     static_dir = os.path.join(os.path.dirname(__file__), 'static', 'barcodes')
     if not os.path.exists(static_dir):
         os.makedirs(static_dir)
-        print(f"✅ 创建条码目录: {static_dir}")
+        print(f"[OK] 创建条码目录: {static_dir}")
     
     print()
-    print("🚀 启动服务器...")
-    print("📍 访问地址: http://127.0.0.1:888")
+    print("[INFO] 启动服务器...")
+    print("[INFO] 访问地址: http://127.0.0.1:888")
     print()
     print("功能说明:")
     print("  • 订单管理: 创建、编辑、删除订单")
