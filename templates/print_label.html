@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+
+{% block title %}打印标签 - 订单条码管理系统{% endblock %}
+
+{% block extra_css %}
+<style>
+/* 打印标签样式 */
+@media print {
+    @page {
+        size: 80mm 50mm;
+        margin: 0;
+    }
+    body {
+        margin: 0;
+        padding: 0;
+        width: 80mm;
+        height: 50mm;
+    }
+    .label-container {
+        width: 80mm;
+        height: 50mm;
+        margin: 0;
+        padding: 3mm;
+    }
+    .no-print {
+        display: none;
+    }
+}
+
+/* 屏幕显示样式 */
+.label-container {
+    width: 80mm;
+    height: 50mm;
+    border: 1px solid #ccc;
+    margin: 20px auto;
+    padding: 3mm;
+    background: white;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.label-table {
+    width: 100%;
+    border-collapse: collapse;
+    height: 100%;
+    font-family: Arial, sans-serif;
+    font-size: 9px;
+}
+
+.label-table td {
+    border: 1px solid #000;
+    padding: 1px;
+    text-align: center;
+}
+
+.label-table .barcode-cell {
+    text-align: center;
+    padding: 2mm;
+}
+
+.label-table .barcode-cell img {
+    max-width: 95%;
+    height: 25mm;
+}
+
+.label-table .barcode-text {
+    margin-top: 2px;
+    font-size: 7px;
+}
+
+/* 控制面板 */
+.control-panel {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+
+.print-button {
+    display: block;
+    width: 100%;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: bold;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.print-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.quantity-control {
+    margin: 15px 0;
+}
+
+.quantity-control label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.quantity-control input {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 14px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="control-panel">
+    <h3>🖨️ 标签打印设置</h3>
+    <p>纸张大小：80mm × 50mm</p>
+    <p>标签格式：按照图片格式排列</p>
+    <p style="color: #667eea; font-weight: 500;">✅ 支持同一张订单的所有条码连续打印</p>
+    
+    <div class="quantity-control">
+        <label for="printQuantity">每个条码打印份数：</label>
+        <input type="number" id="printQuantity" min="1" max="100" value="1">
+        <small style="color: #888; display: block; margin-top: 5px;">
+            输入 1 表示每个条码打印 1 份
+        </small>
+    </div>
+    
+    <button class="print-button" onclick="printLabels()">开始打印</button>
+    
+    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+        <h4>📋 订单信息</h4>
+        <div id="orderInfo"></div>
+    </div>
+    
+    <div style="margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+        <h5 style="margin-bottom: 10px;">💡 打印说明</h5>
+        <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+            <li>系统会自动为订单中的每个条码生成标签</li>
+            <li>所有标签会在同一份报表中连续打印</li>
+            <li>每个标签都包含完整的订单信息</li>
+            <li>请确保打印机已正确设置为 80mm × 50mm 标签纸</li>
+        </ul>
+    </div>
+</div>
+
+<div id="labelsContainer">
+    <div class="empty-state">
+        <div class="empty-state-icon">🏷️</div>
+        <p>加载中...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const orderId = {{ order_id }};
+let orderData = null;
+let barcodes = [];
+
+// 加载订单和条码数据
+async function loadData() {
+    try {
+        console.log('loadData called with orderId:', orderId);
+        const response = await fetch(`/api/orders/${orderId}/barcodes`);
+        const result = await response.json();
+        
+        console.log('API response:', result);
+        if (result.success) {
+            orderData = result.data.order;
+            barcodes = result.data.barcodes;
+            console.log('Loaded barcodes:', barcodes);
+            renderOrderInfo();
+            renderLabels();
+        }
+    } catch (error) {
+        console.error('加载数据失败:', error);
+        showAlert('加载数据失败', 'danger');
+    }
+}
+
+// 渲染订单信息
+function renderOrderInfo() {
+    const container = document.getElementById('orderInfo');
+    
+    container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            <div>
+                <strong>工程名称：</strong>${orderData.work_tag}
+            </div>
+            <div>
+                <strong>名称：</strong>${orderData.name}
+            </div>
+            <div>
+                <strong>产品：</strong>${orderData.product}
+            </div>
+            <div>
+                <strong>颜色：</strong>${orderData.color || '-'}
+            </div>
+            <div>
+                <strong>图号：</strong>${orderData.drawing_no || '-'}
+            </div>
+            <div>
+                <strong>数量：</strong>${orderData.quantity}
+            </div>
+        </div>
+    `;
+}
+
+// 渲染标签预览
+function renderLabels() {
+    const container = document.getElementById('labelsContainer');
+    
+    if (barcodes.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">🏷️</div>
+                <p>暂无条码数据</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    
+    html += `
+        <div style="text-align: center; margin-bottom: 20px;">
+            <h4>📄 标签预览（80mm × 50mm）</h4>
+            <p>共 ${barcodes.length} 个标签</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+    `;
+    
+    // 显示所有条码的预览
+    barcodes.forEach(barcode => {
+        html += `
+            <div class="label-container">
+                <table class="label-table">
+                    <!-- 第一行：工程名称 -->
+                    <tr>
+                        <td>工程名称</td>
+                        <td colspan="3">${orderData.work_tag || ''}</td>
+                    </tr>
+                    <!-- 第二行：序号和颜色 -->
+                    <tr>
+                        <td>序号</td>
+                        <td>${barcode.sequence_no.toString()}</td>
+                        <td>颜色</td>
+                        <td>${orderData.color || '-'}</td>
+                    </tr>
+                    <!-- 第三行：数量和图号 -->
+                    <tr>
+                        <td>数量</td>
+                        <td>1/1</td>
+                        <td>图号</td>
+                        <td>${orderData.drawing_no || '-'}</td>
+                    </tr>
+                    <!-- 第四行：产品编码 -->
+                    <tr>
+                        <td>产品编码</td>
+                        <td colspan="3">${orderData.product || '-'}</td>
+                    </tr>
+                    <!-- 第五行：条码 -->
+                    <tr>
+                        <td colspan="4" class="barcode-cell">
+                            <img src="${barcode.image_path}" alt="条码">
+                            <div class="barcode-text">NO.${barcode.id}</div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+// 打印标签
+function printLabels() {
+    const quantity = parseInt(document.getElementById('printQuantity').value) || 1;
+    
+    if (barcodes.length === 0) {
+        showAlert('没有可打印的条码', 'warning');
+        return;
+    }
+    
+    // 构建打印内容
+    let printContent = '<!DOCTYPE html><html><head><title>打印条码标签</title><style>body{font-family:Arial,sans-serif;margin:0;padding:20px;}.label{width:80mm;height:50mm;border:1px solid #000;padding:3mm;margin-bottom:10mm;page-break-after:always;font-size:9px;box-sizing:border-box;}.label table{width:100%;border-collapse:collapse;height:100%;}.label td{border:1px solid #000;padding:1px;}.label .barcode-cell{text-align:center;padding:2mm;}.label .barcode-cell img{max-width:95%;height:25mm;}.label .barcode-text{margin-top:2px;font-size:7px;}</style></head><body>';
+    
+    // 转义HTML特殊字符
+    function escapeHtml(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+    
+    // 添加每个标签
+    for (let i = 0; i < quantity; i++) {
+        barcodes.forEach(barcode => {
+            printContent += '<div class="label"><table>';
+            // 第一行：工程名称
+            printContent += '<tr><td>工程名称</td><td colspan="3">' + escapeHtml(orderData.work_tag || '') + '</td></tr>';
+            // 第二行：序号和颜色
+            printContent += '<tr><td>序号</td><td>' + escapeHtml(barcode.sequence_no.toString()) + '</td><td>颜色</td><td>' + escapeHtml(orderData.color || '-') + '</td></tr>';
+            // 第三行：数量和图号
+            printContent += '<tr><td>数量</td><td>1/1</td><td>图号</td><td>' + escapeHtml(orderData.drawing_no || '-') + '</td></tr>';
+            // 第四行：产品编码
+            printContent += '<tr><td>产品编码</td><td colspan="3">' + escapeHtml(orderData.product || '-') + '</td></tr>';
+            // 第五行：条码
+            printContent += '<tr><td colspan="4" class="barcode-cell"><img src="' + barcode.image_path + '"><div class="barcode-text">NO.' + barcode.id + '</div></td></tr>';
+            printContent += '</table></div>';
+        });
+    }
+    
+    printContent += '</body></html>';
+    
+    // 创建一个新窗口用于打印
+    const printWindow = window.open('', '_blank');
+    
+    // 检查窗口是否被阻止
+    if (!printWindow) {
+        showAlert('请允许弹出窗口以打印条码标签', 'warning');
+        return;
+    }
+    
+    // 写入打印内容
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    
+    // 等待窗口加载完成后打印
+    printWindow.onload = function() {
+        printWindow.print();
+    };
+}
+
+// 页面加载时执行
+document.addEventListener('DOMContentLoaded', () => {
+    loadData();
+});
+</script>
+{% endblock %}

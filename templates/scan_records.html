@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}扫描记录 - 订单条码管理系统{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">📊 扫描记录</h2>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="loadScanRecords()">🔄 刷新</button>
+            <button class="btn btn-primary" onclick="exportRecords()">📥 导出</button>
+        </div>
+    </div>
+    
+    <div class="search-box">
+        <input type="text" class="form-control" id="filterInput" placeholder="筛选条码、操作员...">
+        <select class="form-control" id="resultFilter" style="max-width: 150px;">
+            <option value="">全部结果</option>
+            <option value="SUCCESS">成功</option>
+            <option value="DUPLICATE">重复</option>
+            <option value="NOT_FOUND">不存在</option>
+            <option value="FAILED">失败</option>
+        </select>
+        <button class="btn btn-primary" onclick="filterRecords()">🔍 筛选</button>
+    </div>
+    
+    <div id="scanRecordsTable">
+        <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p>加载中...</p>
+        </div>
+    </div>
+</div>
+
+<!-- 统计信息 -->
+<div class="stats-grid" style="margin-top: 30px;">
+    <div class="stat-card">
+        <div class="stat-icon green">✅</div>
+        <div>
+            <div class="stat-value" id="successCount">0</div>
+            <div class="stat-label">成功扫描</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon orange">⚠️</div>
+        <div>
+            <div class="stat-value" id="duplicateCount">0</div>
+            <div class="stat-label">重复扫描</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon blue">📈</div>
+        <div>
+            <div class="stat-value" id="totalCount">0</div>
+            <div class="stat-label">总记录数</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allRecords = [];
+// 分页参数
+let currentPage = 1;
+const pageSize = 20;
+
+// 加载扫描记录
+async function loadScanRecords(page = 1) {
+    currentPage = page;
+    try {
+        const response = await fetch(`/api/scan-records?page=${page}&page_size=${pageSize}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            allRecords = result.data;
+            renderScanRecords(allRecords);
+            updateStatistics(allRecords);
+        }
+    } catch (error) {
+        console.error('加载扫描记录失败:', error);
+        showAlert('加载扫描记录失败', 'danger');
+    }
+}
+
+// 渲染扫描记录
+function renderScanRecords(records) {
+    const container = document.getElementById('scanRecordsTable');
+    
+    if (records.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <p>暂无扫描记录</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>条码</th>
+                    <th>扫描结果</th>
+                    <th>消息</th>
+                    <th>操作员</th>
+                    <th>扫描时间</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    records.forEach(record => {
+        let badgeClass = 'badge-info';
+        let icon = 'ℹ️';
+        
+        if (record.scan_result === 'SUCCESS') {
+            badgeClass = 'badge-success';
+            icon = '✅';
+        } else if (record.scan_result === 'DUPLICATE') {
+            badgeClass = 'badge-warning';
+            icon = '⚠️';
+        } else if (record.scan_result === 'NOT_FOUND' || record.scan_result === 'FAILED') {
+            badgeClass = 'badge-danger';
+            icon = '❌';
+        }
+        
+        html += `
+            <tr>
+                <td>${record.id}</td>
+                <td style="font-family: monospace; font-size: 13px;">${record.barcode}</td>
+                <td><span class="badge ${badgeClass}">${icon} ${record.scan_result}</span></td>
+                <td>${record.message || '-'}</td>
+                <td>${record.scanned_by || '-'}</td>
+                <td>${formatDate(record.scanned_at)}</td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table>';
+    
+    // 添加分页控件
+    const hasMoreData = records.length === pageSize;
+    html += `
+        <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+            <button class="btn btn-sm btn-secondary" onclick="loadScanRecords(1)" ${currentPage === 1 ? 'disabled' : ''}>
+                首页
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="loadScanRecords(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>
+                上一页
+            </button>
+            <span style="font-size: 14px; color: #666;">
+                第 ${currentPage} 页
+            </span>
+            <button class="btn btn-sm btn-secondary" onclick="loadScanRecords(${currentPage + 1})" ${!hasMoreData ? 'disabled' : ''}>
+                下一页
+            </button>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// 筛选记录
+function filterRecords() {
+    const keyword = document.getElementById('filterInput').value.trim().toLowerCase();
+    const resultFilter = document.getElementById('resultFilter').value;
+    
+    let filtered = allRecords;
+    
+    // 按关键词筛选
+    if (keyword) {
+        filtered = filtered.filter(record => 
+            record.barcode.toLowerCase().includes(keyword) ||
+            (record.scanned_by && record.scanned_by.toLowerCase().includes(keyword)) ||
+            (record.message && record.message.toLowerCase().includes(keyword))
+        );
+    }
+    
+    // 按结果筛选
+    if (resultFilter) {
+        filtered = filtered.filter(record => record.scan_result === resultFilter);
+    }
+    
+    renderScanRecords(filtered);
+    updateStatistics(filtered);
+}
+
+// 更新统计信息
+function updateStatistics(records) {
+    const successCount = records.filter(r => r.scan_result === 'SUCCESS').length;
+    const duplicateCount = records.filter(r => r.scan_result === 'DUPLICATE').length;
+    
+    document.getElementById('successCount').textContent = successCount;
+    document.getElementById('duplicateCount').textContent = duplicateCount;
+    document.getElementById('totalCount').textContent = records.length;
+}
+
+// 导出记录
+function exportRecords() {
+    const keyword = document.getElementById('filterInput').value.trim().toLowerCase();
+    const resultFilter = document.getElementById('resultFilter').value;
+    
+    let filtered = allRecords;
+    
+    if (keyword) {
+        filtered = filtered.filter(record => 
+            record.barcode.toLowerCase().includes(keyword) ||
+            (record.scanned_by && record.scanned_by.toLowerCase().includes(keyword)) ||
+            (record.message && record.message.toLowerCase().includes(keyword))
+        );
+    }
+    
+    if (resultFilter) {
+        filtered = filtered.filter(record => record.scan_result === resultFilter);
+    }
+    
+    // 创建CSV内容
+    const headers = ['ID', '条码', '扫描结果', '消息', '操作员', '扫描时间'];
+    const csvContent = [
+        headers.join(','),
+        ...filtered.map(record => [
+            record.id,
+            record.barcode,
+            record.scan_result,
+            (record.message || '').replace(/,/g, ' '),
+            record.scanned_by || '',
+            record.scanned_at
+        ].join(','))
+    ].join('\n');
+    
+    // 下载CSV文件
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `扫描记录_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showAlert('导出成功');
+}
+
+// 页面加载时执行
+document.addEventListener('DOMContentLoaded', () => {
+    loadScanRecords();
+    
+    // 筛选框回车事件
+    document.getElementById('filterInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            filterRecords();
+        }
+    });
+});
+</script>
+{% endblock %}

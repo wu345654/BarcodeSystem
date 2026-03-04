@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+
+{% block title %}统计报表 - 订单条码管理系统{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">📊 订单统计报表</h2>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="loadReports()">🔄 刷新</button>
+            <button class="btn btn-primary" onclick="exportReport()">📥 导出</button>
+        </div>
+    </div>
+    
+    <div class="search-box">
+        <input type="text" class="form-control" id="searchInput" placeholder="搜索订单...">
+        <button class="btn btn-primary" onclick="searchReports()">🔍 搜索</button>
+        <button class="btn btn-secondary" onclick="loadReports()">🔄 重置</button>
+    </div>
+    
+    <div id="reportsContainer">
+        <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p>加载中...</p>
+        </div>
+    </div>
+</div>
+
+<!-- 订单详情模态框 -->
+<div class="modal" id="orderModal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+            <h3 id="modalTitle">订单详情</h3>
+            <button class="modal-close" onclick="closeOrderModal()">&times;</button>
+        </div>
+        <div class="modal-body" id="orderDetails">
+            <div class="empty-state">
+                <div class="empty-state-icon">📦</div>
+                <p>加载中...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 分页参数
+let currentPage = 1;
+const pageSize = 10;
+
+// 加载统计报表
+async function loadReports(page = 1) {
+    currentPage = page;
+    try {
+        const response = await fetch(`/api/orders?page=${page}&page_size=${pageSize}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            renderReports(result.data);
+        }
+    } catch (error) {
+        console.error('加载报表失败:', error);
+        showAlert('加载报表失败', 'danger');
+    }
+}
+
+// 搜索订单
+async function searchReports() {
+    const keyword = document.getElementById('searchInput').value.trim();
+    if (!keyword) {
+        loadReports();
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/orders/search?keyword=${encodeURIComponent(keyword)}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            renderReports(result.data);
+        }
+    } catch (error) {
+        console.error('搜索失败:', error);
+        showAlert('搜索失败', 'danger');
+    }
+}
+
+// 渲染统计报表
+function renderReports(orders) {
+    const container = document.getElementById('reportsContainer');
+    
+    if (orders.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <p>暂无订单数据</p>
+                <button class="btn btn-primary" onclick="window.location.href='/orders'" style="margin-top: 15px;">创建订单</button>
+            </div>
+        `;
+        return;
+    }
+    
+    // 计算总计
+    let totalOrders = orders.length;
+    let totalBarcodes = 0;
+    let totalScanned = 0;
+    
+    orders.forEach(order => {
+        totalBarcodes += order.scan_stats.total;
+        totalScanned += order.scan_stats.scanned;
+    });
+    
+    const overallProgress = totalBarcodes > 0 ? (totalScanned / totalBarcodes * 100).toFixed(1) : 0;
+    
+    let html = `
+        <div style="margin-bottom: 30px; padding: 25px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px;">
+            <h3 style="margin-bottom: 20px;">📋 总体统计</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                <div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 5px;">订单总数</div>
+                    <div style="font-size: 28px; font-weight: bold;">${totalOrders}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 5px;">条码总数</div>
+                    <div style="font-size: 28px; font-weight: bold;">${totalBarcodes}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 5px;">已扫描</div>
+                    <div style="font-size: 28px; font-weight: bold;">${totalScanned}</div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-bottom: 5px;">扫描进度</div>
+                    <div style="font-size: 28px; font-weight: bold;">${overallProgress}%</div>
+                </div>
+            </div>
+            <div style="margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                    <span>总体扫描进度</span>
+                    <span>${totalScanned}/${totalBarcodes}</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar" style="width: ${overallProgress}%"></div>
+                </div>
+            </div>
+        </div>
+        
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>订单ID</th>
+                    <th>工程名称</th>
+                    <th>名称</th>
+                    <th>产品</th>
+                    <th>条码总数</th>
+                    <th>已扫描</th>
+                    <th>未扫描</th>
+                    <th>扫描进度</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    orders.forEach(order => {
+        const stats = order.scan_stats;
+        const progress = stats.total > 0 ? (stats.scanned / stats.total * 100).toFixed(1) : 0;
+        
+        html += `
+            <tr>
+                <td>${order.id}</td>
+                <td>${order.work_tag}</td>
+                <td>${order.name}</td>
+                <td>${order.product}</td>
+                <td>${stats.total}</td>
+                <td>${stats.scanned}</td>
+                <td>${stats.unscanned}</td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="badge ${progress == 100 ? 'badge-success' : progress > 0 ? 'badge-warning' : 'badge-info'}">
+                            ${progress}%
+                        </span>
+                        <div class="progress" style="width: 80px;">
+                            <div class="progress-bar" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="btn btn-sm btn-primary" onclick="viewOrderDetails(${order.id})">详情</button>
+                        <button class="btn btn-sm btn-secondary" onclick="window.location.href='/barcodes/${order.id}'">条码</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table>';
+    
+    // 添加分页控件
+    const hasMoreData = orders.length === pageSize;
+    html += `
+        <div style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px;">
+            <button class="btn btn-sm btn-secondary" onclick="loadReports(1)" ${currentPage === 1 ? 'disabled' : ''}>
+                首页
+            </button>
+            <button class="btn btn-sm btn-secondary" onclick="loadReports(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>
+                上一页
+            </button>
+            <span style="font-size: 14px; color: #666;">
+                第 ${currentPage} 页
+            </span>
+            <button class="btn btn-sm btn-secondary" onclick="loadReports(${currentPage + 1})" ${!hasMoreData ? 'disabled' : ''}>
+                下一页
+            </button>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+// 查看订单详情
+async function viewOrderDetails(orderId) {
+    try {
+        const response = await fetch(`/api/orders/${orderId}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            const order = result.data;
+            const stats = order.scan_stats;
+            const progress = stats.total > 0 ? (stats.scanned / stats.total * 100).toFixed(1) : 0;
+            
+            document.getElementById('modalTitle').textContent = `订单详情 - ID: ${order.id}`;
+            
+            const detailsHtml = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <h4 style="margin-bottom: 15px;">📦 订单信息</h4>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div>
+                                <label style="font-weight: 500; color: #666;">工程名称：</label>
+                                <span>${order.work_tag}</span>
+                            </div>
+                            <div>
+                                <label style="font-weight: 500; color: #666;">名称：</label>
+                                <span>${order.name}</span>
+                            </div>
+                            <div>
+                                <label style="font-weight: 500; color: #666;">产品：</label>
+                                <span>${order.product}</span>
+                            </div>
+                            <div>
+                                <label style="font-weight: 500; color: #666;">颜色：</label>
+                                <span>${order.color || '-'}</span>
+                            </div>
+                            <div>
+                                <label style="font-weight: 500; color: #666;">图号：</label>
+                                <span>${order.drawing_no || '-'}</span>
+                            </div>
+                            <div>
+                                <label style="font-weight: 500; color: #666;">创建时间：</label>
+                                <span>${formatDate(order.created_at)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 15px;">📊 扫描统计</h4>
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">条码总数</div>
+                                    <div style="font-size: 24px; font-weight: bold;">${stats.total}</div>
+                                </div>
+                                <div style="background: #d4edda; padding: 15px; border-radius: 8px; text-align: center;">
+                                    <div style="font-size: 12px; color: #155724; margin-bottom: 5px;">已扫描</div>
+                                    <div style="font-size: 24px; font-weight: bold; color: #155724;">${stats.scanned}</div>
+                                </div>
+                            </div>
+                            <div style="background: #fff3cd; padding: 15px; border-radius: 8px; text-align: center;">
+                                <div style="font-size: 12px; color: #856404; margin-bottom: 5px;">未扫描</div>
+                                <div style="font-size: 24px; font-weight: bold; color: #856404;">${stats.unscanned}</div>
+                            </div>
+                            <div>
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                                    <span>扫描进度</span>
+                                    <span>${progress}%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar" style="width: ${progress}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <h4 style="margin-bottom: 15px;">🏷️ 条码列表</h4>
+                    <div id="barcodeList"></div>
+                </div>
+            `;
+            
+            document.getElementById('orderDetails').innerHTML = detailsHtml;
+            document.getElementById('orderModal').classList.add('active');
+            
+            // 加载条码列表
+            loadOrderBarcodes(orderId);
+        }
+    } catch (error) {
+        console.error('加载订单详情失败:', error);
+        showAlert('加载详情失败', 'danger');
+    }
+}
+
+// 加载订单条码
+async function loadOrderBarcodes(orderId) {
+    try {
+        const response = await fetch(`/api/orders/${orderId}/barcodes`);
+        const result = await response.json();
+        
+        if (result.success) {
+            const barcodes = result.data.barcodes;
+            const barcodeList = document.getElementById('barcodeList');
+            
+            let html = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;">
+            `;
+            
+            barcodes.forEach(barcode => {
+                html += `
+                    <div style="border: 1px solid #eee; border-radius: 8px; padding: 15px; text-align: center;">
+                        <div style="font-family: monospace; font-size: 12px; color: #666; margin-bottom: 10px; word-break: break-all;">
+                            ${barcode.barcode}
+                        </div>
+                        <span class="badge ${barcode.is_scanned ? 'badge-success' : 'badge-warning'}">
+                            ${barcode.is_scanned ? '✅ 已扫描' : '⏳ 未扫描'}
+                        </span>
+                        ${barcode.is_scanned ? `
+                            <div style="margin-top: 8px; font-size: 12px; color: #888;">
+                                扫描时间：${formatDate(barcode.scanned_at)}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            barcodeList.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('加载条码失败:', error);
+    }
+}
+
+// 关闭订单模态框
+function closeOrderModal() {
+    document.getElementById('orderModal').classList.remove('active');
+}
+
+// 导出报表
+function exportReport() {
+    // 实现导出功能
+    showAlert('导出功能开发中', 'info');
+}
+
+// 页面加载时执行
+document.addEventListener('DOMContentLoaded', () => {
+    loadReports();
+    
+    // 搜索框回车事件
+    document.getElementById('searchInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            searchReports();
+        }
+    });
+});
+
+// 点击模态框外部关闭
+document.getElementById('orderModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+        closeOrderModal();
+    }
+});
+</script>
+{% endblock %}

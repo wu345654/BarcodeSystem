@@ -1,0 +1,5 @@
+setup.py
+BarcodeSystem.egg-info/PKG-INFO
+BarcodeSystem.egg-info/SOURCES.txt
+BarcodeSystem.egg-info/dependency_links.txt
+BarcodeSystem.egg-info/top_level.txt

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 订单条码管理系统{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon blue">📦</div>
+        <div>
+            <div class="stat-value" id="totalOrders">0</div>
+            <div class="stat-label">总订单数</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon purple">🏷️</div>
+        <div>
+            <div class="stat-value" id="totalBarcodes">0</div>
+            <div class="stat-label">总条码数</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon green">✅</div>
+        <div>
+            <div class="stat-value" id="scannedBarcodes">0</div>
+            <div class="stat-label">已扫描</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon orange">📊</div>
+        <div>
+            <div class="stat-value" id="todayScans">0</div>
+            <div class="stat-label">今日扫描</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">📋 最近订单</h2>
+        <a href="/orders" class="btn btn-primary">查看全部</a>
+    </div>
+    <div id="recentOrders">
+        <div class="empty-state">
+            <div class="empty-state-icon">📦</div>
+            <p>暂无订单数据</p>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">📊 扫描统计</h2>
+        <a href="/scan-records" class="btn btn-primary">查看记录</a>
+    </div>
+    <div id="scanStats">
+        <div class="empty-state">
+            <div class="empty-state-icon">📈</div>
+            <p>暂无扫描数据</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// 加载统计数据
+async function loadStatistics() {
+    try {
+        const response = await fetch('/api/statistics');
+        const result = await response.json();
+        
+        if (result.success) {
+            const data = result.data;
+            document.getElementById('totalOrders').textContent = data.total_orders;
+            document.getElementById('totalBarcodes').textContent = data.total_barcodes;
+            document.getElementById('scannedBarcodes').textContent = data.scanned_barcodes;
+            document.getElementById('todayScans').textContent = data.today_scans;
+        }
+    } catch (error) {
+        console.error('加载统计数据失败:', error);
+    }
+}
+
+// 加载最近订单
+async function loadRecentOrders() {
+    try {
+        const response = await fetch('/api/orders');
+        const result = await response.json();
+        
+        if (result.success && result.data.length > 0) {
+            const recentOrders = result.data.slice(0, 5);
+            const container = document.getElementById('recentOrders');
+            
+            let html = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>工程名称</th>
+                            <th>名称</th>
+                            <th>产品</th>
+                            <th>数量</th>
+                            <th>扫描进度</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            recentOrders.forEach(order => {
+                const stats = order.scan_stats;
+                const progress = stats.total > 0 ? (stats.scanned / stats.total * 100).toFixed(1) : 0;
+                
+                html += `
+                    <tr>
+                        <td>${order.work_tag}</td>
+                        <td>${order.name}</td>
+                        <td>${order.product}</td>
+                        <td>${order.quantity}</td>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span>${stats.scanned}/${stats.total}</span>
+                                <div class="progress" style="flex: 1; min-width: 100px;">
+                                    <div class="progress-bar" style="width: ${progress}%"></div>
+                                </div>
+                                <span>${progress}%</span>
+                            </div>
+                        </td>
+                        <td>${formatDate(order.created_at)}</td>
+                        <td>
+                            <a href="/barcodes/${order.id}" class="btn btn-sm btn-primary">查看条码</a>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('加载订单数据失败:', error);
+    }
+}
+
+// 加载扫描统计
+async function loadScanStats() {
+    try {
+        const response = await fetch('/api/scan-records?limit=10');
+        const result = await response.json();
+        
+        if (result.success && result.data.length > 0) {
+            const container = document.getElementById('scanStats');
+            
+            let html = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>条码</th>
+                            <th>扫描结果</th>
+                            <th>消息</th>
+                            <th>扫描时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            result.data.forEach(record => {
+                let badgeClass = 'badge-info';
+                if (record.scan_result === 'SUCCESS') badgeClass = 'badge-success';
+                else if (record.scan_result === 'DUPLICATE') badgeClass = 'badge-warning';
+                else if (record.scan_result === 'NOT_FOUND') badgeClass = 'badge-danger';
+                
+                html += `
+                    <tr>
+                        <td style="font-family: monospace;">${record.barcode}</td>
+                        <td><span class="badge ${badgeClass}">${record.scan_result}</span></td>
+                        <td>${record.message || '-'}</td>
+                        <td>${formatDate(record.scanned_at)}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('加载扫描记录失败:', error);
+    }
+}
+
+// 页面加载时执行
+document.addEventListener('DOMContentLoaded', () => {
+    loadStatistics();
+    loadRecentOrders();
+    loadScanStats();
+});
+</script>
+{% endblock %}

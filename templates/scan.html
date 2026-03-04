@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+
+{% block title %}条码扫描 - 订单条码管理系统{% endblock %}
+
+{% block content %}
+<div class="scan-area">
+    <h1 style="margin-bottom: 10px;">📷 条码扫描</h1>
+    <p style="opacity: 0.9; margin-bottom: 20px;">请使用扫描枪扫描条码，或手动输入条码编号</p>
+    
+    <input type="text" 
+           class="scan-input" 
+           id="barcodeInput" 
+           placeholder="请扫描或输入条码"
+           autocomplete="off">
+    
+    <div style="margin-top: 15px;">
+        <input type="text" 
+               class="form-control" 
+               id="operatorInput" 
+               placeholder="操作员（可选）"
+               style="max-width: 300px; margin: 0 auto; display: block;">
+    </div>
+    
+    <p style="margin-top: 15px; font-size: 14px; opacity: 0.8;">
+        💡 提示：条码扫描后会自动提交，不可重复扫描
+    </p>
+</div>
+
+<!-- 扫描结果展示 -->
+<div class="scan-result" id="scanResult">
+    <div id="resultContent"></div>
+</div>
+
+<!-- 最近扫描记录 -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">📋 最近扫描记录</h2>
+        <button class="btn btn-secondary" onclick="loadRecentScans()">🔄 刷新</button>
+    </div>
+    <div id="recentScans">
+        <div class="empty-state">
+            <div class="empty-state-icon">📊</div>
+            <p>暂无扫描记录</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let scanTimeout = null;
+
+// 页面加载完成后聚焦到输入框
+document.addEventListener('DOMContentLoaded', () => {
+    const barcodeInput = document.getElementById('barcodeInput');
+    barcodeInput.focus();
+    
+    // 监听输入事件
+    barcodeInput.addEventListener('input', handleBarcodeInput);
+    barcodeInput.addEventListener('keypress', handleKeyPress);
+    
+    // 加载最近扫描记录
+    loadRecentScans();
+    
+    // 页面点击时重新聚焦
+    document.addEventListener('click', () => {
+        barcodeInput.focus();
+    });
+});
+
+// 处理条码输入
+function handleBarcodeInput(e) {
+    const value = e.target.value.trim();
+    
+    // 清除之前的超时
+    if (scanTimeout) {
+        clearTimeout(scanTimeout);
+    }
+    
+    // 如果输入有内容，设置超时自动提交（模拟扫描枪）
+    if (value.length > 0) {
+        scanTimeout = setTimeout(() => {
+            submitScan(value);
+        }, 300);
+    }
+}
+
+// 处理键盘事件
+function handleKeyPress(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        const value = e.target.value.trim();
+        if (value) {
+            submitScan(value);
+        }
+    }
+}
+
+// 提交扫描
+async function submitScan(barcode) {
+    const operator = document.getElementById('operatorInput').value.trim();
+    
+    try {
+        const response = await fetch('/api/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                barcode: barcode,
+                scanned_by: operator
+            })
+        });
+        
+        const result = await response.json();
+        
+        // 显示扫描结果
+        displayScanResult(result);
+        
+        // 清空输入框
+        document.getElementById('barcodeInput').value = '';
+        
+        // 刷新扫描记录
+        loadRecentScans();
+        
+    } catch (error) {
+        console.error('扫描失败:', error);
+        displayScanResult({
+            success: false,
+            scan_result: 'ERROR',
+            message: '系统错误，请重试'
+        });
+        document.getElementById('barcodeInput').value = '';
+    }
+}
+
+// 显示扫描结果
+function displayScanResult(result) {
+    const resultDiv = document.getElementById('scanResult');
+    const contentDiv = document.getElementById('resultContent');
+    
+    let html = '';
+    
+    if (result.scan_result === 'SUCCESS') {
+        // 扫描成功
+        const data = result.data;
+        const order = data.order;
+        const barcode = data.barcode;
+        
+        html = `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 72px; margin-bottom: 20px;">✅</div>
+                <h2 style="color: #11998e; margin-bottom: 15px;">扫描成功</h2>
+                <p style="color: #666; margin-bottom: 30px;">${result.message}</p>
+                
+                <div style="background: #f8f9fa; border-radius: 12px; padding: 25px; text-align: left; max-width: 600px; margin: 0 auto;">
+                    <h3 style="margin-bottom: 20px; color: #333;">📦 订单信息</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <label style="color: #888; font-size: 12px;">工程名称</label>
+                            <p style="font-weight: 500;">${order.work_tag}</p>
+                        </div>
+                        <div>
+                            <label style="color: #888; font-size: 12px;">名称</label>
+                            <p style="font-weight: 500;">${order.name}</p>
+                        </div>
+                        <div>
+                            <label style="color: #888; font-size: 12px;">产品</label>
+                            <p style="font-weight: 500;">${order.product}</p>
+                        </div>
+                        <div>
+                            <label style="color: #888; font-size: 12px;">颜色</label>
+                            <p style="font-weight: 500;">${order.color || '-'}</p>
+                        </div>
+                        <div>
+                            <label style="color: #888; font-size: 12px;">图号</label>
+                            <p style="font-weight: 500;">${order.drawing_no || '-'}</p>
+                        </div>
+                        <div>
+                            <label style="color: #888; font-size: 12px;">序号</label>
+                            <p style="font-weight: 500;">${barcode.sequence_no} / ${order.quantity}</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                        <label style="color: #888; font-size: 12px;">条码编号</label>
+                        <p style="font-family: monospace; font-size: 18px; color: #667eea;">${barcode.barcode}</p>
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary" style="margin-top: 25px;" onclick="continueScan()">
+                    继续扫描
+                </button>
+            </div>
+        `;
+        
+        resultDiv.style.border = '2px solid #11998e';
+        
+    } else if (result.scan_result === 'DUPLICATE') {
+        // 重复扫描
+        const data = result.data;
+        const order = data.order;
+        const barcode = data.barcode;
+        
+        html = `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 72px; margin-bottom: 20px;">⚠️</div>
+                <h2 style="color: #f45c43; margin-bottom: 15px;">重复扫描</h2>
+                <p style="color: #666; margin-bottom: 30px;">${result.message}</p>
+                
+                <div style="background: #fff3cd; border: 1px solid #ffeeba; border-radius: 12px; padding: 25px; text-align: left; max-width: 600px; margin: 0 auto;">
+                    <h3 style="margin-bottom: 20px; color: #856404;">⚠️ 警告信息</h3>
+                    <p style="margin-bottom: 15px;">该条码已于 <strong>${formatDate(barcode.scanned_at)}</strong> 被扫描</p>
+                    ${barcode.scanned_by ? `<p style="margin-bottom: 15px;">操作员：<strong>${barcode.scanned_by}</strong></p>` : ''}
+                    
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ffeeba;">
+                        <h4 style="margin-bottom: 15px;">📦 订单信息</h4>
+                        <p><strong>工程名称：</strong>${order.work_tag}</p>
+                        <p><strong>名称：</strong>${order.name}</p>
+                        <p><strong>产品：</strong>${order.product}</p>
+                        <p style="font-family: monospace; margin-top: 10px; color: #856404;">${barcode.barcode}</p>
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary" style="margin-top: 25px;" onclick="continueScan()">
+                    继续扫描
+                </button>
+            </div>
+        `;
+        
+        resultDiv.style.border = '2px solid #f45c43';
+        
+    } else {
+        // 扫描失败（条码不存在或其他错误）
+        html = `
+            <div style="text-align: center; padding: 20px;">
+                <div style="font-size: 72px; margin-bottom: 20px;">❌</div>
+                <h2 style="color: #eb3349; margin-bottom: 15px;">扫描失败</h2>
+                <p style="color: #666; margin-bottom: 30px;">${result.message}</p>
+                
+                <div style="background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 12px; padding: 25px; max-width: 500px; margin: 0 auto;">
+                    <p style="color: #721c24;">
+                        <strong>条码：</strong>
+                        <span style="font-family: monospace;">${result.data?.barcode?.barcode || '未知'}</span>
+                    </p>
+                    <p style="color: #721c24; margin-top: 10px;">
+                        请检查条码是否正确，或联系管理员
+                    </p>
+                </div>
+                
+                <button class="btn btn-primary" style="margin-top: 25px;" onclick="continueScan()">
+                    继续扫描
+                </button>
+            </div>
+        `;
+        
+        resultDiv.style.border = '2px solid #eb3349';
+    }
+    
+    contentDiv.innerHTML = html;
+    resultDiv.classList.add('show');
+    
+    // 滚动到结果区域
+    resultDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// 继续扫描
+function continueScan() {
+    document.getElementById('scanResult').classList.remove('show');
+    document.getElementById('barcodeInput').focus();
+}
+
+// 加载最近扫描记录
+async function loadRecentScans() {
+    try {
+        const response = await fetch('/api/scan-records?limit=20');
+        const result = await response.json();
+        
+        if (result.success) {
+            renderRecentScans(result.data);
+        }
+    } catch (error) {
+        console.error('加载扫描记录失败:', error);
+    }
+}
+
+// 渲染最近扫描记录
+function renderRecentScans(records) {
+    const container = document.getElementById('recentScans');
+    
+    if (records.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <p>暂无扫描记录</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>条码</th>
+                    <th>扫描结果</th>
+                    <th>消息</th>
+                    <th>操作员</th>
+                    <th>扫描时间</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    records.forEach(record => {
+        let badgeClass = 'badge-info';
+        let icon = 'ℹ️';
+        
+        if (record.scan_result === 'SUCCESS') {
+            badgeClass = 'badge-success';
+            icon = '✅';
+        } else if (record.scan_result === 'DUPLICATE') {
+            badgeClass = 'badge-warning';
+            icon = '⚠️';
+        } else if (record.scan_result === 'NOT_FOUND' || record.scan_result === 'FAILED') {
+            badgeClass = 'badge-danger';
+            icon = '❌';
+        }
+        
+        html += `
+            <tr>
+                <td style="font-family: monospace; font-size: 13px;">${record.barcode}</td>
+                <td><span class="badge ${badgeClass}">${icon} ${record.scan_result}</span></td>
+                <td>${record.message || '-'}</td>
+                <td>${record.scanned_by || '-'}</td>
+                <td>${formatDate(record.scanned_at)}</td>
+            </tr>
+        `;
+    });
+    
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+// 每30秒自动刷新扫描记录
+setInterval(loadRecentScans, 30000);
+</script>
+{% endblock %}
