@@ -42,14 +42,16 @@ def build_executable():
         sep = ';'
     else:
         sep = ':'
+    # 使用更保守的配置，避免 --onefile 可能的问题
     cmd = [
         'pyinstaller',
-        '--onefile',
         '--name=BarcodeSystem',
         '--distpath', 'dist/windows',
         '--add-data', f'templates{sep}templates',
         '--add-data', f'static{sep}static',
         '--icon=icon.ico',
+        '--clean',
+        '--log-level', 'DEBUG',
         'start.py'
     ]
     subprocess.run(cmd, check=True)
@@ -58,8 +60,8 @@ def build_executable():
 # Copy database file
 def copy_database():
     if os.path.exists('order_system.db'):
-        if os.path.exists('dist/windows'):
-            shutil.copy('order_system.db', 'dist/windows/')
+        if os.path.exists('dist/windows/BarcodeSystem'):
+            shutil.copy('order_system.db', 'dist/windows/BarcodeSystem/')
             print("[OK] Database copied")
 
 # Main function
@@ -75,9 +77,9 @@ def main():
         copy_database()
         
         print("\n[SUCCESS] Build successful!")
-        print("Executable location: dist/windows/BarcodeSystem.exe")
+        print("Executable location: dist/windows/BarcodeSystem/BarcodeSystem.exe")
         print("\nUsage:")
-        print("1. Double-click dist/windows/BarcodeSystem.exe to run")
+        print("1. Double-click dist/windows/BarcodeSystem/BarcodeSystem.exe to run")
         print("2. System will open browser at http://127.0.0.1:888")
     except Exception as e:
         print(f"[ERROR] Build failed: {e}")
