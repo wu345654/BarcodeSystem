@@ -3,6 +3,10 @@
 {% block title %}条码扫描 - 订单条码管理系统{% endblock %}
 
 {% block content %}
+<!-- 音频元素 -->
+<audio id="successSound" preload="auto"></audio>
+<audio id="errorSound" preload="auto"></audio>
+
 <div class="scan-area">
     <h1 style="margin-bottom: 10px;">📷 条码扫描</h1>
     <p style="opacity: 0.9; margin-bottom: 20px;">请使用扫描枪扫描条码，或手动输入条码编号</p>
@@ -132,6 +136,54 @@ async function submitScan(barcode) {
     }
 }
 
+// 初始化音频上下文
+let audioContext = null;
+
+// 确保音频上下文初始化
+function getAudioContext() {
+    if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return audioContext;
+}
+
+// 生成提示音
+function generateTone(frequency, duration, type = 'sine') {
+    const ctx = getAudioContext();
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = type;
+    
+    // 音量渐变
+    gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+    
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + duration);
+}
+
+// 播放提示音
+function playSound(soundId) {
+    try {
+        if (soundId === 'successSound') {
+            // 成功提示音：上升音调
+            generateTone(800, 0.2);
+            setTimeout(() => generateTone(1200, 0.15), 200);
+        } else if (soundId === 'errorSound') {
+            // 错误提示音：下降音调
+            generateTone(1200, 0.2);
+            setTimeout(() => generateTone(800, 0.15), 200);
+        }
+    } catch (e) {
+        console.log('无法播放音频:', e);
+    }
+}
+
 // 显示扫描结果
 function displayScanResult(result) {
     const resultDiv = document.getElementById('scanResult');
@@ -194,6 +246,9 @@ function displayScanResult(result) {
         
         resultDiv.style.border = '2px solid #11998e';
         
+        // 播放成功提示音
+        playSound('successSound');
+        
     } else if (result.scan_result === 'DUPLICATE') {
         // 重复扫描
         const data = result.data;
@@ -228,6 +283,9 @@ function displayScanResult(result) {
         
         resultDiv.style.border = '2px solid #f45c43';
         
+        // 播放错误提示音
+        playSound('errorSound');
+        
     } else {
         // 扫描失败（条码不存在或其他错误）
         html = `
@@ -253,6 +311,9 @@ function displayScanResult(result) {
         `;
         
         resultDiv.style.border = '2px solid #eb3349';
+        
+        // 播放错误提示音
+        playSound('errorSound');
     }
     
     contentDiv.innerHTML = html;
