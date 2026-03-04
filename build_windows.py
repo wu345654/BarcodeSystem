@@ -80,7 +80,8 @@ def build_executable():
         sep = ':'
     
     # Build command with add-data for templates and static files
-    cmd = f'pyinstaller --name BarcodeSystem --distpath "{DIST_DIR}" --add-data "{templates_dir}{sep}templates" --add-data "{static_dir}{sep}static" --icon "{icon_file}" --clean "{start_py}"'
+    # Use --onefile to generate a single executable file
+    cmd = f'pyinstaller --onefile --name BarcodeSystem --distpath "{DIST_DIR}" --add-data "{templates_dir}{sep}templates" --add-data "{static_dir}{sep}static" --icon "{icon_file}" --clean "{start_py}"'
     
     print(f"[DEBUG] Running command: {cmd}")
     
@@ -94,7 +95,7 @@ def build_executable():
         print(f"[ERROR] Failed to run PyInstaller: {e}")
         # Try a very simple command as fallback
         print("[DEBUG] Trying fallback command...")
-        fallback_cmd = f'pyinstaller --name BarcodeSystem "{start_py}"'
+        fallback_cmd = f'pyinstaller --onefile --name BarcodeSystem "{start_py}"'
         print(f"[DEBUG] Fallback command: {fallback_cmd}")
         try:
             subprocess.run(fallback_cmd, shell=True, check=True, cwd=BASE_DIR)
@@ -107,26 +108,24 @@ def build_executable():
     print(f"[DEBUG] After build - dist directory exists: {os.path.exists(DIST_DIR)}")
     if os.path.exists(DIST_DIR):
         print(f"[DEBUG] Contents of dist directory: {os.listdir(DIST_DIR)}")
-        # Check if BarcodeSystem directory was created
-        if os.path.exists(BARCODE_DIR):
-            print(f"[DEBUG] BarcodeSystem directory exists: {os.path.exists(BARCODE_DIR)}")
-            print(f"[DEBUG] Contents: {os.listdir(BARCODE_DIR)}")
-        else:
-            # Check if executable was created directly in dist/windows
-            print(f"[DEBUG] Checking direct contents of dist/windows")
-            for item in os.listdir(DIST_DIR):
-                item_path = os.path.join(DIST_DIR, item)
-                if os.path.isfile(item_path) and item.endswith('.exe'):
-                    print(f"[DEBUG] Found executable: {item}")
-                elif os.path.isdir(item_path):
-                    print(f"[DEBUG] Found directory: {item}")
-                    print(f"[DEBUG] Contents of {item}: {os.listdir(item_path)}")
+        # Check if executable was created directly in dist/windows
+        print(f"[DEBUG] Checking direct contents of dist/windows")
+        for item in os.listdir(DIST_DIR):
+            item_path = os.path.join(DIST_DIR, item)
+            if os.path.isfile(item_path) and item.endswith('.exe'):
+                print(f"[DEBUG] Found executable: {item}")
+                print(f"[DEBUG] Executable size: {os.path.getsize(item_path) / 1024 / 1024:.2f} MB")
+            elif os.path.isdir(item_path):
+                print(f"[DEBUG] Found directory: {item}")
+                print(f"[DEBUG] Contents of {item}: {os.listdir(item_path)}")
     else:
         print(f"[ERROR] Dist directory does not exist after build")
         # Check if dist directory was created elsewhere
         print(f"[DEBUG] Checking current directory: {os.listdir('.')}")
         if os.path.exists('dist'):
             print(f"[DEBUG] Found dist directory in current path: {os.listdir('dist')}")
+            if os.path.exists('dist/windows'):
+                print(f"[DEBUG] Found dist/windows directory: {os.listdir('dist/windows')}")
     print("[OK] Build completed")
 
 # Copy database file
@@ -134,8 +133,8 @@ def copy_database():
     db_file = os.path.join(BASE_DIR, 'order_system.db')
     if os.path.exists(db_file):
         # Ensure target directory exists
-        os.makedirs(BARCODE_DIR, exist_ok=True)
-        dest_db = os.path.join(BARCODE_DIR, 'order_system.db')
+        os.makedirs(DIST_DIR, exist_ok=True)
+        dest_db = os.path.join(DIST_DIR, 'order_system.db')
         shutil.copy(db_file, dest_db)
         print(f"[OK] Database copied to: {dest_db}")
     else:
@@ -154,25 +153,23 @@ def main():
         copy_database()
         
         # Check final result
-        if os.path.exists(BARCODE_DIR):
-            exe_path = os.path.join(BARCODE_DIR, 'BarcodeSystem.exe')
+        if os.path.exists(DIST_DIR):
+            exe_path = os.path.join(DIST_DIR, 'BarcodeSystem.exe')
             if os.path.exists(exe_path):
                 print("\n[SUCCESS] Build successful!")
                 print(f"Executable location: {exe_path}")
+                print(f"Executable size: {os.path.getsize(exe_path) / 1024 / 1024:.2f} MB")
                 print("\nUsage:")
                 print(f"1. Double-click {exe_path} to run")
                 print("2. System will open browser at http://127.0.0.1:888")
             else:
-                print("\n[WARNING] Executable not found in expected location")
-                print(f"Contents of {BARCODE_DIR}: {os.listdir(BARCODE_DIR)}")
-        else:
-            # Check if executable is in dist/windows directly
-            if os.path.exists(DIST_DIR):
+                # Check if executable was created with different name
                 for item in os.listdir(DIST_DIR):
                     if item.endswith('.exe'):
                         exe_path = os.path.join(DIST_DIR, item)
                         print("\n[SUCCESS] Build successful!")
                         print(f"Executable location: {exe_path}")
+                        print(f"Executable size: {os.path.getsize(exe_path) / 1024 / 1024:.2f} MB")
                         print("\nUsage:")
                         print(f"1. Double-click {exe_path} to run")
                         print("2. System will open browser at http://127.0.0.1:888")
@@ -180,8 +177,8 @@ def main():
                 else:
                     print("\n[ERROR] Executable not found")
                     print(f"Contents of {DIST_DIR}: {os.listdir(DIST_DIR)}")
-            else:
-                print("\n[ERROR] Dist directory not found")
+        else:
+            print("\n[ERROR] Dist directory not found")
     except Exception as e:
         print(f"[ERROR] Build failed: {e}")
         import traceback
