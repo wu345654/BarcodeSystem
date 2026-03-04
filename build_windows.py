@@ -42,6 +42,8 @@ def build_executable():
         sep = ';'
     else:
         sep = ':'
+    # 创建输出目录
+    os.makedirs('dist/windows', exist_ok=True)
     # 使用更保守的配置，避免 --onefile 可能的问题
     cmd = [
         'pyinstaller',
@@ -60,9 +62,10 @@ def build_executable():
 # Copy database file
 def copy_database():
     if os.path.exists('order_system.db'):
-        if os.path.exists('dist/windows/BarcodeSystem'):
-            shutil.copy('order_system.db', 'dist/windows/BarcodeSystem/')
-            print("[OK] Database copied")
+        # 确保目标目录存在
+        os.makedirs('dist/windows/BarcodeSystem', exist_ok=True)
+        shutil.copy('order_system.db', 'dist/windows/BarcodeSystem/')
+        print("[OK] Database copied")
 
 # Main function
 def main():

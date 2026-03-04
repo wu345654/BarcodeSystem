@@ -31,7 +31,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: windows-build
-        path: dist/windows/BarcodeSystem/
+        path: dist/windows/
 
   build-linux:
     runs-on: ubuntu-latest
@@ -53,7 +53,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: linux-build
-        path: dist/linux/BarcodeSystem/
+        path: dist/linux/
 
   build-macos:
     runs-on: macos-latest
@@ -75,4 +75,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: macos-build
-        path: dist/macos/BarcodeSystem/
+        path: dist/macos/

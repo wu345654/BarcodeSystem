@@ -89,6 +89,8 @@ def main():
     # Build with PyInstaller
     print("\nBuilding with PyInstaller...")
     
+    # 创建输出目录
+    os.makedirs('dist/macos', exist_ok=True)
     # Build command
     pyinstaller_cmd = (
         f"pyinstaller --windowed --name BarcodeSystem "
@@ -111,6 +113,8 @@ def main():
         for db_file in database_files:
             src_db = os.path.join(project_root, db_file)
             if os.path.exists(src_db):
+                # 确保目标目录存在
+                os.makedirs(macos_dist_dir, exist_ok=True)
                 dst_db = os.path.join(macos_dist_dir, db_file)
                 shutil.copy2(src_db, dst_db)
                 print(f"Copied {db_file} to dist/macos/BarcodeSystem directory")
