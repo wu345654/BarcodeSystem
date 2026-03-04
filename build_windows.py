@@ -49,9 +49,25 @@ def build_executable():
     print(f"[DEBUG] Base directory: {BASE_DIR}")
     print(f"[DEBUG] Dist directory: {DIST_DIR}")
     
+    # Check if required files exist
+    start_py = os.path.join(BASE_DIR, 'start.py')
+    templates_dir = os.path.join(BASE_DIR, 'templates')
+    static_dir = os.path.join(BASE_DIR, 'static')
+    icon_file = os.path.join(BASE_DIR, 'icon.ico')
+    
+    print(f"[DEBUG] start.py exists: {os.path.exists(start_py)}")
+    print(f"[DEBUG] templates directory exists: {os.path.exists(templates_dir)}")
+    print(f"[DEBUG] static directory exists: {os.path.exists(static_dir)}")
+    print(f"[DEBUG] icon.ico exists: {os.path.exists(icon_file)}")
+    
     # Create output directories
-    os.makedirs(DIST_DIR, exist_ok=True)
-    print(f"[DEBUG] Created dist directory: {DIST_DIR}")
+    try:
+        os.makedirs(DIST_DIR, exist_ok=True)
+        print(f"[DEBUG] Created dist directory: {DIST_DIR}")
+        print(f"[DEBUG] Dist directory exists after creation: {os.path.exists(DIST_DIR)}")
+    except Exception as e:
+        print(f"[ERROR] Failed to create dist directory: {e}")
+        raise
     
     # Choose correct separator based on OS
     if platform.system() == 'Windows':
@@ -60,11 +76,6 @@ def build_executable():
         sep = ':'
     
     # Build command with absolute paths
-    start_py = os.path.join(BASE_DIR, 'start.py')
-    templates_dir = os.path.join(BASE_DIR, 'templates')
-    static_dir = os.path.join(BASE_DIR, 'static')
-    icon_file = os.path.join(BASE_DIR, 'icon.ico')
-    
     cmd = [
         'pyinstaller',
         '--name=BarcodeSystem',
@@ -79,7 +90,18 @@ def build_executable():
     print(f"[DEBUG] Running command: {' '.join(cmd)}")
     
     # Run with shell=True for Windows compatibility
-    subprocess.run(' '.join(cmd), shell=True, check=True, cwd=BASE_DIR)
+    try:
+        result = subprocess.run(' '.join(cmd), shell=True, capture_output=True, text=True, cwd=BASE_DIR)
+        print(f"[DEBUG] Command exit code: {result.returncode}")
+        if result.stdout:
+            print(f"[DEBUG] Command stdout: {result.stdout[:500]}...")  # Limit output
+        if result.stderr:
+            print(f"[DEBUG] Command stderr: {result.stderr[:500]}...")  # Limit output
+        if result.returncode != 0:
+            raise Exception(f"PyInstaller failed with exit code {result.returncode}")
+    except Exception as e:
+        print(f"[ERROR] Failed to run PyInstaller: {e}")
+        raise
     
     # Check build results
     print(f"[DEBUG] After build - dist directory exists: {os.path.exists(DIST_DIR)}")
@@ -96,6 +118,8 @@ def build_executable():
                 item_path = os.path.join(DIST_DIR, item)
                 if os.path.isfile(item_path) and item.endswith('.exe'):
                     print(f"[DEBUG] Found executable: {item}")
+    else:
+        print(f"[ERROR] Dist directory does not exist after build")
     print("[OK] Build completed")
 
 # Copy database file
