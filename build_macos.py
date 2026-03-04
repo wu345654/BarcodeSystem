@@ -92,6 +92,7 @@ def main():
     # Build command
     pyinstaller_cmd = (
         f"pyinstaller --onefile --windowed --name BarcodeSystem "
+        f"--distpath dist/macos "
         f"--add-data 'templates:templates' "
         f"--add-data 'static:static' "
         f"app.py"
@@ -104,19 +105,20 @@ def main():
         
         # Copy database files
         print("Copying database files...")
+        macos_dist_dir = os.path.join(project_root, 'dist', 'macos')
         database_files = ['order_system.db']
         for db_file in database_files:
             src_db = os.path.join(project_root, db_file)
             if os.path.exists(src_db):
-                dst_db = os.path.join(dist_dir, db_file)
+                dst_db = os.path.join(macos_dist_dir, db_file)
                 shutil.copy2(src_db, dst_db)
-                print(f"Copied {db_file} to dist directory")
+                print(f"Copied {db_file} to dist/macos directory")
             else:
                 print(f"Warning: Database file {db_file} not found")
         
         # Create macOS run script
         print("Creating macOS run script...")
-        run_script_path = os.path.join(dist_dir, 'run_barcode_system.sh')
+        run_script_path = os.path.join(macos_dist_dir, 'run_barcode_system.sh')
         
         with open(run_script_path, 'w') as f:
             f.write('''#!/bin/bash
@@ -158,7 +160,7 @@ cd "$SCRIPT_DIR"
         
         # Create DMG package script (optional)
         print("Creating DMG package script...")
-        dmg_script_path = os.path.join(dist_dir, 'create_dmg.sh')
+        dmg_script_path = os.path.join(macos_dist_dir, 'create_dmg.sh')
         
         with open(dmg_script_path, 'w') as f:
             f.write('''#!/bin/bash
@@ -196,11 +198,11 @@ echo "DMG installer created: $DMG_NAME.dmg"
         os.chmod(dmg_script_path, 0o755)
         
         print(f"\nBuild completed!")
-        print(f"Executable location: {os.path.join(dist_dir, 'BarcodeSystem')}")
+        print(f"Executable location: {macos_dist_dir}/BarcodeSystem")
         print(f"Run script: {run_script_path}")
         print(f"DMG script: {dmg_script_path}")
         print("\nUsage:")
-        print(f"1. Enter dist directory: cd {dist_dir}")
+        print(f"1. Enter dist/macos directory: cd {macos_dist_dir}")
         print("2. Run script: ./run_barcode_system.sh")
         print("3. Access in browser: http://localhost:5001")
         print("\nCreate DMG installer:")

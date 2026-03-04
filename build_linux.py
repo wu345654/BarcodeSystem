@@ -87,6 +87,7 @@ def main():
     # Build command
     pyinstaller_cmd = (
         f"pyinstaller --onefile --name BarcodeSystem "
+        f"--distpath dist/linux "
         f"--add-data 'templates:templates' "
         f"--add-data 'static:static' "
         f"app.py"
@@ -99,19 +100,20 @@ def main():
         
         # Copy database files
         print("Copying database files...")
+        linux_dist_dir = os.path.join(project_root, 'dist', 'linux')
         database_files = ['order_system.db']
         for db_file in database_files:
             src_db = os.path.join(project_root, db_file)
             if os.path.exists(src_db):
-                dst_db = os.path.join(dist_dir, db_file)
+                dst_db = os.path.join(linux_dist_dir, db_file)
                 shutil.copy2(src_db, dst_db)
-                print(f"Copied {db_file} to dist directory")
+                print(f"Copied {db_file} to dist/linux directory")
             else:
                 print(f"Warning: Database file {db_file} not found")
         
         # Create Linux run script
         print("Creating Linux run script...")
-        run_script_path = os.path.join(dist_dir, 'run_barcode_system.sh')
+        run_script_path = os.path.join(linux_dist_dir, 'run_barcode_system.sh')
         
         with open(run_script_path, 'w') as f:
             f.write('''#!/bin/bash
@@ -146,10 +148,10 @@ echo "===================================="
         os.chmod(run_script_path, 0o755)
         
         print(f"\nBuild completed!")
-        print(f"Executable location: {os.path.join(dist_dir, 'BarcodeSystem')}")
+        print(f"Executable location: {linux_dist_dir}/BarcodeSystem")
         print(f"Run script: {run_script_path}")
         print("\nUsage:")
-        print(f"1. Enter dist directory: cd {dist_dir}")
+        print(f"1. Enter dist/linux directory: cd {linux_dist_dir}")
         print("2. Run script: ./run_barcode_system.sh")
         print("3. Access in browser: http://localhost:5001")
     else:
