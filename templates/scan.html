@@ -148,7 +148,7 @@ function getAudioContext() {
 }
 
 // 生成提示音
-function generateTone(frequency, duration, type = 'sine') {
+function generateTone(frequency, duration, type = 'sine', volume = 0.1) {
     const ctx = getAudioContext();
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
@@ -160,7 +160,7 @@ function generateTone(frequency, duration, type = 'sine') {
     oscillator.type = type;
     
     // 音量渐变
-    gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+    gainNode.gain.setValueAtTime(volume, ctx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
     
     oscillator.start(ctx.currentTime);
@@ -172,12 +172,12 @@ function playSound(soundId) {
     try {
         if (soundId === 'successSound') {
             // 成功提示音：上升音调
-            generateTone(800, 0.2);
-            setTimeout(() => generateTone(1200, 0.15), 200);
+            generateTone(800, 0.2, 'sine', 0.1);
+            setTimeout(() => generateTone(1200, 0.15, 'sine', 0.1), 200);
         } else if (soundId === 'errorSound') {
-            // 错误提示音：下降音调
-            generateTone(1200, 0.2);
-            setTimeout(() => generateTone(800, 0.15), 200);
+            // 错误提示音：更强烈的下降音调
+            generateTone(1500, 0.3, 'square', 0.2); // 更高频率、更长时间、更大音量、方波
+            setTimeout(() => generateTone(800, 0.2, 'square', 0.15), 300);
         }
     } catch (e) {
         console.log('无法播放音频:', e);
