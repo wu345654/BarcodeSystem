@@ -69,15 +69,18 @@ def build_executable():
         print(f"[ERROR] Failed to create dist directory: {e}")
         raise
     
-    # For Windows, use simple command without complex options
+    # For all platforms, use command with add-data to include templates and static files
     if platform.system() == 'Windows':
-        print("[DEBUG] Running on Windows, using simple PyInstaller command")
-        cmd = f'pyinstaller --name BarcodeSystem --distpath "{DIST_DIR}" --clean "{start_py}"'
-    else:
-        print("[DEBUG] Running on non-Windows, using standard PyInstaller command")
-        # Choose correct separator based on OS
+        print("[DEBUG] Running on Windows, using PyInstaller command with add-data")
+        # Windows uses ; as separator
         sep = ';'
-        cmd = f'pyinstaller --name BarcodeSystem --distpath "{DIST_DIR}" --add-data "{templates_dir}{sep}templates" --add-data "{static_dir}{sep}static" --icon "{icon_file}" --clean "{start_py}"'
+    else:
+        print("[DEBUG] Running on non-Windows, using PyInstaller command with add-data")
+        # Other platforms use : as separator
+        sep = ':'
+    
+    # Build command with add-data for templates and static files
+    cmd = f'pyinstaller --name BarcodeSystem --distpath "{DIST_DIR}" --add-data "{templates_dir}{sep}templates" --add-data "{static_dir}{sep}static" --icon "{icon_file}" --clean "{start_py}"'
     
     print(f"[DEBUG] Running command: {cmd}")
     
