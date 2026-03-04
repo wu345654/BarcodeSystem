@@ -310,6 +310,13 @@ def serve_static(filename):
     return send_from_directory(app.static_folder, filename)
 
 
+@app.route('/mic/<path:filename>')
+def serve_mic(filename):
+    """提供音频文件"""
+    mic_dir = os.path.join(os.path.dirname(__file__), 'mic')
+    return send_from_directory(mic_dir, filename)
+
+
 # ==================== 统计信息 ====================
 
 @app.route('/api/statistics', methods=['GET'])
