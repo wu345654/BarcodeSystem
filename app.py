@@ -1,9 +1,10 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 import os
+import time
 from datetime import datetime
 from database import (
-    init_database, OrderModel, BarcodeModel, ScanRecordModel, LabelTemplateModel, 
+    init_database, OrderModel, OrderDetailModel, BarcodeModel, ScanRecordModel, LabelTemplateModel, 
     UserModel, RoleModel, PermissionModel, UserRoleModel, RolePermissionModel, AuthModel, get_connection
 )
 from barcode_generator import create_barcodes_for_order, generate_barcode_image
@@ -129,6 +130,7 @@ def login():
         session['user_id'] = user['id']
         session['username'] = user['username']
         session['name'] = user['name']
+        session['avatar'] = user.get('avatar')
         
         return redirect(url_for('index'))
     
@@ -140,6 +142,32 @@ def logout():
     """注销"""
     session.clear()
     return redirect(url_for('login'))
+
+
+@app.route('/user-profile')
+@login_required
+def user_profile():
+    """个人设置页面"""
+    user_id = session['user_id']
+    user = UserModel.get_by_id(user_id)
+    if not user:
+        return redirect(url_for('login'))
+    
+    # 系统头像列表
+    system_avatars = [
+        '/static/avatars/avatar1.svg',
+        '/static/avatars/avatar2.svg',
+        '/static/avatars/avatar3.svg',
+        '/static/avatars/avatar4.svg',
+        '/static/avatars/avatar5.svg',
+        '/static/avatars/avatar6.svg',
+        '/static/avatars/avatar7.svg',
+        '/static/avatars/avatar8.svg',
+        '/static/avatars/avatar9.svg',
+        '/static/avatars/avatar10.svg'
+    ]
+    
+    return render_template('user_profile.html', user=user, system_avatars=system_avatars)
 
 
 @app.route('/orders')
@@ -236,10 +264,15 @@ def get_orders():
     page_size = request.args.get('page_size', 10, type=int)
     
     orders = OrderModel.get_all(page, page_size)
-    # 为每个订单添加扫描统计
+    # 为每个订单添加扫描统计和明细
     for order in orders:
         stats = BarcodeModel.get_scan_statistics(order['id'])
         order['scan_stats'] = stats
+        
+        # 获取订单明细
+        details = OrderDetailModel.get_by_order(order['id'])
+        order['details'] = details
+    
     return jsonify({'success': True, 'data': orders})
 
 
@@ -252,6 +285,11 @@ def get_order(order_id):
     if order:
         stats = BarcodeModel.get_scan_statistics(order_id)
         order['scan_stats'] = stats
+        
+        # 获取订单明细
+        details = OrderDetailModel.get_by_order(order_id)
+        order['details'] = details
+        
         return jsonify({'success': True, 'data': order})
     return jsonify({'success': False, 'message': '订单不存在'}), 404
 
@@ -279,6 +317,19 @@ def create_order():
             drawing_no=data.get('drawing_no'),
             quantity=data.get('quantity', 1)
         )
+        
+        # 创建订单明细
+        details = data.get('details', [])
+        for detail in details:
+            OrderDetailModel.create(
+                order_id=order_id,
+                sequence_no=detail.get('sequence_no', 0),
+                product_name=detail.get('product_name', ''),
+                color=detail.get('color'),
+                thickness=detail.get('thickness'),
+                drawing_no=detail.get('drawing_no'),
+                quantity=detail.get('quantity', 1)
+            )
         
         # 生成条码
         quantity = data.get('quantity', 1)
@@ -309,7 +360,27 @@ def update_order(order_id):
         return jsonify({'success': False, 'message': '订单不存在'}), 404
     
     try:
-        success = OrderModel.update(order_id, **data)
+        # 更新订单基本信息
+        order_data = {k: v for k, v in data.items() if k != 'details'}
+        success = OrderModel.update(order_id, **order_data)
+        
+        # 更新订单明细
+        if 'details' in data:
+            # 删除原有明细
+            OrderDetailModel.delete_by_order(order_id)
+            
+            # 创建新明细
+            for detail in data['details']:
+                OrderDetailModel.create(
+                    order_id=order_id,
+                    sequence_no=detail.get('sequence_no', 0),
+                    product_name=detail.get('product_name', ''),
+                    color=detail.get('color'),
+                    thickness=detail.get('thickness'),
+                    drawing_no=detail.get('drawing_no'),
+                    quantity=detail.get('quantity', 1)
+                )
+        
         if success:
             return jsonify({'success': True, 'message': '订单更新成功'})
         return jsonify({'success': False, 'message': '更新失败'}), 400
@@ -348,6 +419,11 @@ def search_orders():
     for order in orders:
         stats = BarcodeModel.get_scan_statistics(order['id'])
         order['scan_stats'] = stats
+        
+        # 获取订单明细
+        details = OrderDetailModel.get_by_order(order['id'])
+        order['details'] = details
+    
     return jsonify({'success': True, 'data': orders})
 
 
@@ -374,6 +450,22 @@ def get_barcodes(order_id):
             'barcodes': barcodes
         }
     })
+
+
+@app.route('/api/orders/<int:order_id>/details', methods=['GET'])
+@login_required
+@permission_required('order.view')
+def get_order_details(order_id):
+    """获取订单的所有明细"""
+    try:
+        order = OrderModel.get_by_id(order_id)
+        if not order:
+            return jsonify({'success': False, 'message': '订单不存在'}), 404
+        
+        details = OrderDetailModel.get_by_order(order_id)
+        return jsonify({'success': True, 'data': details})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @app.route('/api/barcodes/<barcode>', methods=['GET'])
@@ -1099,6 +1191,96 @@ def get_label_template(template_id):
         return jsonify({'success': False, 'message': f'获取模板详情失败: {str(e)}'}), 500
 
 
+@app.route('/api/user/profile', methods=['POST'])
+@login_required
+def update_user_profile():
+    """更新用户个人设置"""
+    try:
+        user_id = session['user_id']
+        user = UserModel.get_by_id(user_id)
+        if not user:
+            return jsonify({'success': False, 'message': '用户不存在'}), 404
+        
+        # 处理表单数据
+        name = request.form.get('name')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        avatar_url = request.form.get('avatar_url')
+        
+        # 验证数据
+        if not name:
+            return jsonify({'success': False, 'message': '姓名不能为空'}), 400
+        
+        if password:
+            if password != confirm_password:
+                return jsonify({'success': False, 'message': '两次输入的密码不一致'}), 400
+        
+        # 处理头像上传
+        avatar = None
+        if 'avatar' in request.files:
+            file = request.files['avatar']
+            if file and file.filename:
+                # 确保avatars目录存在
+                avatars_dir = os.path.join(app.static_folder, 'avatars')
+                os.makedirs(avatars_dir, exist_ok=True)
+                
+                # 生成唯一文件名
+                filename = f"{user_id}_{int(time.time())}_{file.filename}"
+                filepath = os.path.join(avatars_dir, filename)
+                file.save(filepath)
+                
+                # 生成相对路径
+                avatar = f"/static/avatars/{filename}"
+        elif avatar_url:
+            # 使用系统头像
+            avatar = avatar_url
+        
+        # 更新用户信息
+        update_data = {'name': name, 'email': email}
+        if password:
+            update_data['password'] = password
+        if avatar:
+            update_data['avatar'] = avatar
+        
+        UserModel.update(user_id, **update_data)
+        
+        # 更新session中的用户信息
+        session['name'] = name
+        if avatar:
+            session['avatar'] = avatar
+        
+        return jsonify({
+            'success': True,
+            'message': '个人设置更新成功',
+            'data': {
+                'name': name,
+                'email': email,
+                'avatar': avatar
+            }
+        })
+        
+    except Exception as e:
+        print(f"更新个人设置失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'更新个人设置失败: {str(e)}'}), 500
+
+
+@app.route('/api/user/permissions', methods=['GET'])
+@login_required
+def get_user_permissions():
+    """获取用户权限"""
+    try:
+        user_id = session['user_id']
+        permissions = AuthModel.get_user_permissions(user_id)
+        return jsonify({
+            'success': True,
+            'data': permissions
+        })
+    except Exception as e:
+        print(f"获取用户权限失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取用户权限失败: {str(e)}'}), 500
+
+
 @app.route('/api/label-templates/<int:template_id>', methods=['PUT'])
 @login_required
 @permission_required('label.template')
@@ -1502,17 +1684,7 @@ def delete_permission(permission_id):
         return jsonify({'success': False, 'message': f'删除权限失败: {str(e)}'}), 500
 
 
-@app.route('/api/user/permissions', methods=['GET'])
-@login_required
-def get_user_permissions():
-    """获取当前用户的权限"""
-    try:
-        user_id = session['user_id']
-        permissions = AuthModel.get_user_permissions(user_id)
-        return jsonify({'success': True, 'data': permissions})
-    except Exception as e:
-        print(f"获取用户权限失败: {str(e)}")
-        return jsonify({'success': False, 'message': f'获取用户权限失败: {str(e)}'}), 500
+
 
 
 def generate_label_pdf_fallback():

@@ -62,6 +62,33 @@
                     <input type="number" class="form-control" id="quantity" min="1" value="1" required>
                     <small style="color: #888;">将根据此数量生成对应数量的唯一条码</small>
                 </div>
+                
+                <!-- 订单明细部分 -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h4 style="margin: 0; font-size: 16px;">订单明细</h4>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="addDetailRow()">➕ 添加明细</button>
+                    </div>
+                    
+                    <div id="detailsContainer">
+                        <table class="table" id="detailsTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 60px;">序号</th>
+                                    <th>品名</th>
+                                    <th>颜色</th>
+                                    <th>板厚</th>
+                                    <th>图号</th>
+                                    <th>数量</th>
+                                    <th style="width: 80px;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="detailsTableBody">
+                                <!-- 明细行将通过JavaScript动态添加 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </form>
         </div>
         <div class="modal-footer">
@@ -77,6 +104,8 @@
 {% block extra_js %}
 <script>
 let currentOrderId = null;
+let orderDetails = [];
+let detailSequenceCounter = 1;
 // 分页参数
 let currentPage = 1;
 const pageSize = 10;
@@ -104,12 +133,16 @@ async function loadOrders(page = 1) {
 function checkOrderPermissions() {
     // 控制新建订单按钮
     const createBtn = document.getElementById('createOrderBtn');
-    console.log('检查新建订单权限:', typeof hasPermission, hasPermission ? hasPermission('order.create') : 'hasPermission not defined', window.userPermissions);
-    if (createBtn && typeof hasPermission === 'function' && !hasPermission('order.create')) {
-        console.log('隐藏新建订单按钮');
-        createBtn.style.display = 'none';
-    } else if (createBtn) {
-        console.log('显示新建订单按钮');
+    console.log('检查新建订单权限:', window.hasPermission, window.hasPermission ? window.hasPermission('order.create') : 'hasPermission not defined', window.userPermissions);
+    
+    if (createBtn) {
+        if (window.hasPermission && window.hasPermission('order.create')) {
+            console.log('显示新建订单按钮');
+            createBtn.style.display = 'inline-block';
+        } else {
+            console.log('隐藏新建订单按钮');
+            createBtn.style.display = 'none';
+        }
     }
 }
 
@@ -122,7 +155,7 @@ function renderOrders(orders) {
             <div class="empty-state">
                 <div class="empty-state-icon">📦</div>
                 <p>暂无订单数据</p>
-                ${typeof hasPermission === 'function' && hasPermission('order.create') ? '<button class="btn btn-primary" onclick="openModal()" style="margin-top: 15px;">创建第一个订单</button>' : ''}
+                ${window.hasPermission && window.hasPermission('order.create') ? '<button class="btn btn-primary" onclick="openModal()" style="margin-top: 15px;">创建第一个订单</button>' : ''}
             </div>
         `;
         return;
@@ -132,6 +165,7 @@ function renderOrders(orders) {
         <table class="table">
             <thead>
                 <tr>
+                    <th style="width: 40px;"></th>
                     <th>ID</th>
                     <th>工程名称</th>
                     <th>名称</th>
@@ -150,20 +184,29 @@ function renderOrders(orders) {
     orders.forEach(order => {
         const stats = order.scan_stats;
         const progress = stats.total > 0 ? (stats.scanned / stats.total * 100).toFixed(1) : 0;
+        const hasDetails = order.details && order.details.length > 0;
         
         // 生成操作按钮
         let actionButtons = '<button class="btn btn-sm btn-primary" onclick="viewBarcodes(' + order.id + ')">条码</button>';
         
-        if (typeof hasPermission === 'function' && hasPermission('order.edit')) {
+        // 检查编辑权限
+        if (window.hasPermission && window.hasPermission('order.edit')) {
             actionButtons += ' <button class="btn btn-sm btn-secondary" onclick="editOrder(' + order.id + ')">编辑</button>';
         }
         
-        if (typeof hasPermission === 'function' && hasPermission('order.delete')) {
+        // 检查删除权限
+        if (window.hasPermission && window.hasPermission('order.delete')) {
             actionButtons += ' <button class="btn btn-sm btn-danger" onclick="deleteOrder(' + order.id + ')">删除</button>';
         }
         
+        // 生成展开/折叠按钮
+        const expandBtn = hasDetails ? 
+            `<button class="btn btn-sm btn-link" onclick="toggleDetails(${order.id})" id="expandBtn_${order.id}" style="padding: 0; min-width: 20px;">▶</button>` : 
+            '<span style="color: #ccc;">•</span>';
+        
         html += `
-            <tr>
+            <tr class="order-row" data-order-id="${order.id}">
+                <td style="text-align: center;">${expandBtn}</td>
                 <td>${order.id}</td>
                 <td>${order.work_tag}</td>
                 <td>${order.name}</td>
@@ -189,6 +232,49 @@ function renderOrders(orders) {
                 </td>
             </tr>
         `;
+        
+        // 生成订单明细行（默认隐藏）
+        if (hasDetails) {
+            html += `
+                <tr class="details-row" id="details_${order.id}" style="display: none;">
+                    <td colspan="11" style="padding: 0;">
+                        <div style="padding: 15px; background-color: #f9f9f9; border-left: 3px solid #667eea;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #667eea;">订单明细</h4>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <thead>
+                                    <tr style="background-color: #e8e8e8;">
+                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 12px;">序号</th>
+                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 12px;">品名</th>
+                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 12px;">颜色</th>
+                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 12px;">板厚</th>
+                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 12px;">图号</th>
+                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd; font-size: 12px;">数量</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+            
+            order.details.forEach(function(detail) {
+                html += `
+                    <tr style="border-bottom: 1px solid #eee;">
+                        <td style="padding: 8px; font-size: 12px;">${detail.sequence_no}</td>
+                        <td style="padding: 8px; font-size: 12px;">${detail.product_name}</td>
+                        <td style="padding: 8px; font-size: 12px; color: #666;">${detail.color || '-'}</td>
+                        <td style="padding: 8px; font-size: 12px; color: #666;">${detail.thickness || '-'}</td>
+                        <td style="padding: 8px; font-size: 12px; color: #666;">${detail.drawing_no || '-'}</td>
+                        <td style="padding: 8px; font-size: 12px; color: #667eea; font-weight: bold;">${detail.quantity}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
     });
     
     html += '</tbody></table>';
@@ -243,6 +329,11 @@ function openModal(orderId = null) {
     currentOrderId = orderId;
     document.getElementById('orderForm').reset();
     
+    // 清空明细列表
+    orderDetails = [];
+    detailSequenceCounter = 1;
+    renderOrderDetails();
+    
     if (orderId) {
         document.getElementById('modalTitle').textContent = '编辑订单';
         // 加载订单数据
@@ -276,12 +367,86 @@ async function loadOrderForEdit(orderId) {
             document.getElementById('drawingNo').value = order.drawing_no || '';
             document.getElementById('product').value = order.product;
             document.getElementById('quantity').value = order.quantity;
+            
+            // 加载订单明细
+            await loadOrderDetails(orderId);
         } else {
             showAlert(result.message || '加载失败', 'danger');
         }
     } catch (error) {
         console.error('加载订单数据失败:', error);
         showAlert('加载订单数据失败', 'danger');
+    }
+}
+
+// 加载订单明细
+async function loadOrderDetails(orderId) {
+    try {
+        const response = await fetch(`/api/orders/${orderId}/details`);
+        const result = await response.json();
+        
+        if (result.success) {
+            orderDetails = result.data;
+            renderOrderDetails();
+            // 更新序号计数器
+            if (orderDetails.length > 0) {
+                detailSequenceCounter = Math.max(...orderDetails.map(d => d.sequence_no)) + 1;
+            }
+        }
+    } catch (error) {
+        console.error('加载订单明细失败:', error);
+    }
+}
+
+// 渲染订单明细
+function renderOrderDetails() {
+    const tbody = document.getElementById('detailsTableBody');
+    tbody.innerHTML = '';
+    
+    orderDetails.forEach((detail, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="number" class="form-control" style="width: 60px;" value="${detail.sequence_no}" onchange="updateDetail(${index}, 'sequence_no', this.value)"></td>
+            <td><input type="text" class="form-control" value="${detail.product_name}" onchange="updateDetail(${index}, 'product_name', this.value)"></td>
+            <td><input type="text" class="form-control" value="${detail.color || ''}" onchange="updateDetail(${index}, 'color', this.value)"></td>
+            <td><input type="text" class="form-control" value="${detail.thickness || ''}" onchange="updateDetail(${index}, 'thickness', this.value)"></td>
+            <td><input type="text" class="form-control" value="${detail.drawing_no || ''}" onchange="updateDetail(${index}, 'drawing_no', this.value)"></td>
+            <td><input type="number" class="form-control" style="width: 80px;" value="${detail.quantity}" min="1" onchange="updateDetail(${index}, 'quantity', this.value)"></td>
+            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeDetail(${index})">删除</button></td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+// 添加明细行
+function addDetailRow() {
+    const newDetail = {
+        id: null,
+        sequence_no: detailSequenceCounter++,
+        product_name: '',
+        color: '',
+        thickness: '',
+        drawing_no: '',
+        quantity: 1
+    };
+    orderDetails.push(newDetail);
+    renderOrderDetails();
+}
+
+// 删除明细行
+function removeDetail(index) {
+    if (confirm('确定要删除此明细吗？')) {
+        orderDetails.splice(index, 1);
+        renderOrderDetails();
+    }
+}
+
+// 更新明细数据
+function updateDetail(index, field, value) {
+    if (field === 'sequence_no' || field === 'quantity') {
+        orderDetails[index][field] = parseInt(value) || 0;
+    } else {
+        orderDetails[index][field] = value;
     }
 }
 
@@ -299,7 +464,8 @@ async function saveOrder() {
         color: document.getElementById('color').value,
         drawing_no: document.getElementById('drawingNo').value,
         product: document.getElementById('product').value,
-        quantity: parseInt(document.getElementById('quantity').value)
+        quantity: parseInt(document.getElementById('quantity').value),
+        details: orderDetails
     };
     
     try {
@@ -340,6 +506,22 @@ function editOrder(orderId) {
     openModal(orderId);
 }
 
+// 展开/折叠订单明细
+function toggleDetails(orderId) {
+    const detailsRow = document.getElementById(`details_${orderId}`);
+    const expandBtn = document.getElementById(`expandBtn_${orderId}`);
+    
+    if (detailsRow.style.display === 'none') {
+        // 展开明细
+        detailsRow.style.display = 'table-row';
+        expandBtn.textContent = '▼';
+    } else {
+        // 折叠明细
+        detailsRow.style.display = 'none';
+        expandBtn.textContent = '▶';
+    }
+}
+
 // 删除订单
 async function deleteOrder(orderId) {
     if (!confirmDelete('确定要删除此订单吗？相关的条码数据也将被删除。')) {
@@ -373,7 +555,16 @@ function viewBarcodes(orderId) {
 
 // 页面加载时执行
 document.addEventListener('DOMContentLoaded', () => {
-    loadOrders();
+    // 等待权限加载完成后再加载订单
+    function loadOrdersWhenReady() {
+        if (window.userPermissions && window.userPermissions.length > 0) {
+            loadOrders();
+        } else {
+            setTimeout(loadOrdersWhenReady, 100);
+        }
+    }
+    
+    loadOrdersWhenReady();
     
     // 搜索框回车事件
     document.getElementById('searchInput').addEventListener('keypress', (e) => {
@@ -384,7 +575,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 检查权限
     function checkPermissionsNow() {
-        if (typeof hasPermission === 'function' && window.userPermissions) {
+        if (window.hasPermission && window.userPermissions) {
             console.log('立即检查权限');
             checkOrderPermissions();
         } else {

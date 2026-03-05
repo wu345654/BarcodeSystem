@@ -40,6 +40,23 @@ def init_database():
         )
     ''')
     
+    # 订单明细表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS order_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            sequence_no INTEGER NOT NULL,
+            product_name TEXT NOT NULL,
+            color TEXT,
+            thickness TEXT,
+            drawing_no TEXT,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+        )
+    ''')
+    
     # 条码表
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS barcodes (
@@ -229,6 +246,92 @@ class OrderModel:
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
+
+
+class OrderDetailModel:
+    """订单明细数据模型"""
+    
+    @staticmethod
+    def create(order_id: int, sequence_no: int, product_name: str, 
+               color: str = None, thickness: str = None, 
+               drawing_no: str = None, quantity: int = 1) -> int:
+        """创建订单明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO order_details (order_id, sequence_no, product_name, color, thickness, drawing_no, quantity)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (order_id, sequence_no, product_name, color, thickness, drawing_no, quantity))
+        detail_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return detail_id
+    
+    @staticmethod
+    def get_by_id(detail_id: int) -> Optional[Dict]:
+        """根据ID获取订单明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM order_details WHERE id = ?', (detail_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_by_order(order_id: int) -> List[Dict]:
+        """获取订单的所有明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM order_details WHERE order_id = ? ORDER BY sequence_no
+        ''', (order_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    
+    @staticmethod
+    def update(detail_id: int, **kwargs) -> bool:
+        """更新订单明细"""
+        allowed_fields = ['sequence_no', 'product_name', 'color', 'thickness', 'drawing_no', 'quantity']
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not updates:
+            return False
+        
+        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [detail_id]
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            UPDATE order_details SET {set_clause}, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', values)
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def delete(detail_id: int) -> bool:
+        """删除订单明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM order_details WHERE id = ?', (detail_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def delete_by_order(order_id: int) -> bool:
+        """删除订单的所有明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM order_details WHERE order_id = ?', (order_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
 
 
 class BarcodeModel:
@@ -430,14 +533,14 @@ class UserModel:
     """用户数据模型"""
     
     @staticmethod
-    def create(username: str, password: str, name: str, email: str = None) -> int:
+    def create(username: str, password: str, name: str, email: str = None, avatar: str = None) -> int:
         """创建用户"""
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO users (username, password, name, email)
-            VALUES (?, ?, ?, ?)
-        ''', (username, password, name, email))
+            INSERT INTO users (username, password, name, email, avatar)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (username, password, name, email, avatar))
         user_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -476,7 +579,7 @@ class UserModel:
     @staticmethod
     def update(user_id: int, **kwargs) -> bool:
         """更新用户"""
-        allowed_fields = ['username', 'password', 'name', 'email', 'is_active']
+        allowed_fields = ['username', 'password', 'name', 'email', 'is_active', 'avatar']
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return False

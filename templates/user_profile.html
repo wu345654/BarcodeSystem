@@ -1,0 +1,161 @@
+{% extends 'base.html' %}
+
+{% block title %}个人设置 - 订单条码管理系统{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">个人设置</h2>
+    </div>
+    <div class="card-body">
+        <form id="profile-form" enctype="multipart/form-data">
+            <div class="form-row">
+                <div class="form-group" style="grid-column: 1 / -1; text-align: center; margin-bottom: 30px;">
+                    <label class="form-label" style="display: block; margin-bottom: 15px;">头像设置</label>
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 20px;">
+                        <!-- 当前头像 -->
+                        <div style="position: relative; width: 120px; height: 120px; margin-bottom: 20px;">
+                            <img id="current-avatar" src="{{ user.avatar or '/static/avatars/default.svg' }}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #667eea;">
+                        </div>
+                        
+                        <!-- 上传头像 -->
+                        <div style="margin-bottom: 20px;">
+                            <label class="btn btn-primary" for="avatar-upload" style="cursor: pointer;">
+                                <input type="file" id="avatar-upload" name="avatar" accept="image/*" style="display: none;">
+                                上传头像
+                            </label>
+                        </div>
+                        
+                        <!-- 系统头像选择 -->
+                        <div style="width: 100%; max-width: 400px;">
+                            <label class="form-label" style="display: block; margin-bottom: 10px;">系统头像选择</label>
+                            <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">
+                                {% for avatar in system_avatars %}
+                                <div style="text-align: center;">
+                                    <img src="{{ avatar }}" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid transparent; transition: all 0.3s;" data-avatar="{{ avatar }}" onclick="selectSystemAvatar('{{ avatar }}')">
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">用户名</label>
+                    <input type="text" class="form-control" id="username" value="{{ user.username }}" disabled>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">姓名</label>
+                    <input type="text" class="form-control" id="name" value="{{ user.name }}">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">邮箱</label>
+                    <input type="email" class="form-control" id="email" value="{{ user.email or '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">修改密码</label>
+                    <input type="password" class="form-control" id="password" placeholder="留空表示不修改">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">确认密码</label>
+                    <input type="password" class="form-control" id="confirm-password" placeholder="留空表示不修改">
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; display: flex; gap: 15px; justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="window.location.href='/'"><i class="fas fa-arrow-left"></i> 返回</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> 保存设置</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 系统头像列表
+    const systemAvatars = [
+        '/static/avatars/avatar1.svg',
+        '/static/avatars/avatar2.svg',
+        '/static/avatars/avatar3.svg',
+        '/static/avatars/avatar4.svg',
+        '/static/avatars/avatar5.svg',
+        '/static/avatars/avatar6.svg',
+        '/static/avatars/avatar7.svg',
+        '/static/avatars/avatar8.svg',
+        '/static/avatars/avatar9.svg',
+        '/static/avatars/avatar10.svg'
+    ];
+    
+    // 选择系统头像
+    function selectSystemAvatar(avatarUrl) {
+        document.getElementById('current-avatar').src = avatarUrl;
+        // 移除其他头像的选中状态
+        document.querySelectorAll('[data-avatar]').forEach(img => {
+            img.style.borderColor = 'transparent';
+        });
+        // 添加当前选中头像的边框
+        event.target.style.borderColor = '#667eea';
+        event.target.style.borderWidth = '2px';
+    }
+    
+    // 上传头像预览
+    document.getElementById('avatar-upload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('current-avatar').src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    // 保存设置
+    document.getElementById('profile-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData();
+        formData.append('name', document.getElementById('name').value);
+        formData.append('email', document.getElementById('email').value);
+        formData.append('password', document.getElementById('password').value);
+        formData.append('confirm_password', document.getElementById('confirm-password').value);
+        
+        // 检查是否有文件上传
+        const fileInput = document.getElementById('avatar-upload');
+        if (fileInput.files.length > 0) {
+            formData.append('avatar', fileInput.files[0]);
+        } else {
+            // 检查是否选择了系统头像
+            const currentAvatar = document.getElementById('current-avatar').src;
+            if (currentAvatar.includes('/static/avatars/')) {
+                formData.append('avatar_url', currentAvatar);
+            }
+        }
+        
+        try {
+            const response = await fetch('/api/user/profile', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                showAlert('设置保存成功！');
+                // 重新加载页面以更新头像
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                showAlert(result.message, 'danger');
+            }
+        } catch (error) {
+            showAlert('保存失败，请重试', 'danger');
+        }
+    });
+</script>
+{% endblock %}
