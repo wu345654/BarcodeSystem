@@ -564,15 +564,33 @@
     <nav class="navbar">
         <div class="navbar-content">
             <div class="navbar-brand">📦 订单条码管理系统</div>
-            <ul class="navbar-nav">
-                <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">首页</a></li>
-                <li><a href="/orders" class="{% if request.path == '/orders' %}active{% endif %}">订单管理</a></li>
-                <li><a href="/scan" class="{% if request.path == '/scan' %}active{% endif %}">条码扫描</a></li>
-                <li><a href="/scan-records" class="{% if request.path == '/scan-records' %}active{% endif %}">扫描记录</a></li>
-                <li><a href="/label-print" class="{% if request.path == '/label-print' %}active{% endif %}">标签打印</a></li>
-                <li><a href="/delivery-order" class="{% if request.path == '/delivery-order' %}active{% endif %}">出库单</a></li>
-                <li><a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}">统计报表</a></li>
-            </ul>
+            <div style="display: flex; align-items: center; gap: 20px;">
+                <ul class="navbar-nav">
+                    <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">首页</a></li>
+                    <li><a href="/orders" class="{% if request.path == '/orders' %}active{% endif %}">订单管理</a></li>
+                    <li><a href="/scan" class="{% if request.path == '/scan' %}active{% endif %}">条码扫描</a></li>
+                    <li><a href="/scan-records" class="{% if request.path == '/scan-records' %}active{% endif %}">扫描记录</a></li>
+                    <li><a href="/label-print" class="{% if request.path == '/label-print' %}active{% endif %}">标签打印</a></li>
+                    <li><a href="/delivery-order" class="{% if request.path == '/delivery-order' %}active{% endif %}">出库单</a></li>
+                    <li><a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}">统计报表</a></li>
+                    <li class="dropdown" style="position: relative;">
+                        <a href="#" style="position: relative;">用户管理 ▾</a>
+                        <ul class="dropdown-menu" style="position: absolute; top: 100%; left: 0; background: white; color: #333; list-style: none; padding: 0; margin: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; display: none; z-index: 1000;">
+                            <li><a href="/user-management" class="{% if request.path == '/user-management' %}active{% endif %}" style="color: #333; padding: 10px 20px; display: block; text-decoration: none; border-bottom: 1px solid #eee;">用户管理</a></li>
+                            <li><a href="/role-management" class="{% if request.path == '/role-management' %}active{% endif %}" style="color: #333; padding: 10px 20px; display: block; text-decoration: none; border-bottom: 1px solid #eee;">角色管理</a></li>
+                            <li><a href="/permission-management" class="{% if request.path == '/permission-management' %}active{% endif %}" style="color: #333; padding: 10px 20px; display: block; text-decoration: none;">权限管理</a></li>
+                        </ul>
+                    </li>
+                </ul>
+                <div style="color: white; display: flex; align-items: center; gap: 15px;">
+                    {% if session.username %}
+                    <span>欢迎, {{ session.name or session.username }}</span>
+                    <a href="/logout" style="color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2); border-radius: 4px; transition: background 0.3s;">注销</a>
+                    {% else %}
+                    <a href="/login" style="color: white; text-decoration: none; padding: 8px 16px; background: rgba(255,255,255,0.2); border-radius: 4px; transition: background 0.3s;">登录</a>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </nav>
     
@@ -607,6 +625,120 @@
         function confirmDelete(message = '确定要删除吗？') {
             return confirm(message);
         }
+        
+        // 下拉菜单功能
+        document.addEventListener('DOMContentLoaded', function() {
+            // 下拉菜单显示/隐藏
+            const dropdown = document.querySelector('.dropdown');
+            if (dropdown) {
+                const dropdownToggle = dropdown.querySelector('a[href="#"]');
+                const dropdownMenu = dropdown.querySelector('.dropdown-menu');
+                
+                // 只在点击触发按钮时处理
+                if (dropdownToggle) {
+                    dropdownToggle.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropdownMenu.style.display = dropdownMenu.style.display === 'block' ? 'none' : 'block';
+                    });
+                }
+                
+                // 点击其他地方关闭下拉菜单
+                document.addEventListener('click', function() {
+                    if (dropdownMenu) {
+                        dropdownMenu.style.display = 'none';
+                    }
+                });
+                
+                // 防止点击下拉菜单内部时关闭
+                if (dropdownMenu) {
+                    dropdownMenu.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                    });
+                }
+            }
+            
+            // 用户权限
+            window.userPermissions = [];
+            
+            // 加载用户权限
+            async function loadUserPermissions() {
+                try {
+                    console.log('开始加载用户权限');
+                    const response = await fetch('/api/user/permissions');
+                    console.log('权限API响应:', response.status);
+                    const result = await response.json();
+                    console.log('权限API结果:', result);
+                    if (result.success) {
+                        window.userPermissions = result.data.map(p => p.code);
+                        console.log('用户权限加载成功:', window.userPermissions);
+                        checkPermissions();
+                        // 触发权限加载完成事件
+                        const event = new Event('permissionsLoaded');
+                        window.dispatchEvent(event);
+                    } else {
+                        console.error('权限API返回失败:', result.message);
+                    }
+                } catch (error) {
+                    console.error('加载用户权限失败:', error);
+                }
+            }
+            
+            // 检查用户是否拥有指定权限
+            function hasPermission(permissionCode) {
+                return window.userPermissions.includes(permissionCode);
+            }
+            
+            // 根据用户权限显示/隐藏菜单项和按钮
+            function checkPermissions() {
+                console.log('检查权限...');
+                
+                // 菜单项权限映射
+                const menuPermissions = {
+                    '/': 'order.view',
+                    '/orders': 'order.view',
+                    '/scan': 'scan.scan',
+                    '/scan-records': 'scan.view',
+                    '/label-print': 'label.print',
+                    '/delivery-order': 'delivery.generate',
+                    '/reports': 'report.view',
+                    '/user-management': 'user.manage',
+                    '/role-management': 'user.manage',
+                    '/permission-management': 'user.manage'
+                };
+                
+                // 检查并控制菜单项显示
+                document.querySelectorAll('.navbar-nav a').forEach(link => {
+                    const href = link.getAttribute('href');
+                    const requiredPermission = menuPermissions[href];
+                    
+                    if (requiredPermission && !hasPermission(requiredPermission)) {
+                        link.style.display = 'none';
+                    }
+                });
+                
+                // 检查用户管理下拉菜单
+                const userManagementDropdown = document.querySelector('.dropdown');
+                if (userManagementDropdown) {
+                    const hasUserManagePermission = hasPermission('user.manage');
+                    if (!hasUserManagePermission) {
+                        userManagementDropdown.style.display = 'none';
+                    } else {
+                        // 检查下拉菜单项
+                        userManagementDropdown.querySelectorAll('a').forEach(subLink => {
+                            const subHref = subLink.getAttribute('href');
+                            const subRequiredPermission = menuPermissions[subHref];
+                            if (subRequiredPermission && !hasPermission(subRequiredPermission)) {
+                                subLink.style.display = 'none';
+                            }
+                        });
+                    }
+                }
+            }
+            
+            // 页面加载时加载用户权限
+            loadUserPermissions();
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

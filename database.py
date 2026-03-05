@@ -80,6 +80,63 @@ def init_database():
         )
     ''')
     
+    # 用户表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            name TEXT NOT NULL,
+            email TEXT,
+            is_active BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 角色表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 权限表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            code TEXT NOT NULL UNIQUE,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 角色权限关联表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS role_permissions (
+            role_id INTEGER NOT NULL,
+            permission_id INTEGER NOT NULL,
+            PRIMARY KEY (role_id, permission_id),
+            FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+            FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # 用户角色关联表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_roles (
+            user_id INTEGER NOT NULL,
+            role_id INTEGER NOT NULL,
+            PRIMARY KEY (user_id, role_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -367,6 +424,315 @@ class LabelTemplateModel:
         affected = cursor.rowcount
         conn.close()
         return affected > 0
+
+
+class UserModel:
+    """用户数据模型"""
+    
+    @staticmethod
+    def create(username: str, password: str, name: str, email: str = None) -> int:
+        """创建用户"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO users (username, password, name, email)
+            VALUES (?, ?, ?, ?)
+        ''', (username, password, name, email))
+        user_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return user_id
+    
+    @staticmethod
+    def get_by_id(user_id: int) -> Optional[Dict]:
+        """根据ID获取用户"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_by_username(username: str) -> Optional[Dict]:
+        """根据用户名获取用户"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_all() -> List[Dict]:
+        """获取所有用户"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM users ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    
+    @staticmethod
+    def update(user_id: int, **kwargs) -> bool:
+        """更新用户"""
+        allowed_fields = ['username', 'password', 'name', 'email', 'is_active']
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not updates:
+            return False
+        
+        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [user_id]
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            UPDATE users SET {set_clause}, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', values)
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def delete(user_id: int) -> bool:
+        """删除用户"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+
+
+class RoleModel:
+    """角色数据模型"""
+    
+    @staticmethod
+    def create(name: str, description: str = None) -> int:
+        """创建角色"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO roles (name, description)
+            VALUES (?, ?)
+        ''', (name, description))
+        role_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return role_id
+    
+    @staticmethod
+    def get_by_id(role_id: int) -> Optional[Dict]:
+        """根据ID获取角色"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM roles WHERE id = ?', (role_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_by_name(name: str) -> Optional[Dict]:
+        """根据名称获取角色"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM roles WHERE name = ?', (name,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_all() -> List[Dict]:
+        """获取所有角色"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM roles ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+
+class PermissionModel:
+    """权限数据模型"""
+    
+    @staticmethod
+    def create(name: str, code: str, description: str = None) -> int:
+        """创建权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO permissions (name, code, description)
+            VALUES (?, ?, ?)
+        ''', (name, code, description))
+        permission_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return permission_id
+    
+    @staticmethod
+    def get_by_id(permission_id: int) -> Optional[Dict]:
+        """根据ID获取权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM permissions WHERE id = ?', (permission_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_by_code(code: str) -> Optional[Dict]:
+        """根据代码获取权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM permissions WHERE code = ?', (code,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_all() -> List[Dict]:
+        """获取所有权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM permissions ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+
+class UserRoleModel:
+    """用户角色关联模型"""
+    
+    @staticmethod
+    def create(user_id: int, role_id: int) -> bool:
+        """为用户分配角色"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO user_roles (user_id, role_id)
+                VALUES (?, ?)
+            ''', (user_id, role_id))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+        finally:
+            conn.close()
+    
+    @staticmethod
+    def get_roles_by_user(user_id: int) -> List[Dict]:
+        """获取用户的所有角色"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT r.* FROM roles r
+            JOIN user_roles ur ON r.id = ur.role_id
+            WHERE ur.user_id = ?
+        ''', (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    
+    @staticmethod
+    def get_users_by_role(role_id: int) -> List[Dict]:
+        """获取角色的所有用户"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT u.* FROM users u
+            JOIN user_roles ur ON u.id = ur.user_id
+            WHERE ur.role_id = ?
+        ''', (role_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+
+class RolePermissionModel:
+    """角色权限关联模型"""
+    
+    @staticmethod
+    def create(role_id: int, permission_id: int) -> bool:
+        """为角色分配权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO role_permissions (role_id, permission_id)
+                VALUES (?, ?)
+            ''', (role_id, permission_id))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+        finally:
+            conn.close()
+    
+    @staticmethod
+    def get_permissions_by_role(role_id: int) -> List[Dict]:
+        """获取角色的所有权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT p.* FROM permissions p
+            JOIN role_permissions rp ON p.id = rp.permission_id
+            WHERE rp.role_id = ?
+        ''', (role_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    
+    @staticmethod
+    def get_roles_by_permission(permission_id: int) -> List[Dict]:
+        """获取拥有该权限的所有角色"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT r.* FROM roles r
+            JOIN role_permissions rp ON r.id = rp.role_id
+            WHERE rp.permission_id = ?
+        ''', (permission_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+
+class AuthModel:
+    """认证和权限检查模型"""
+    
+    @staticmethod
+    def check_user_permission(user_id: int, permission_code: str) -> bool:
+        """检查用户是否拥有指定权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) as count FROM permissions p
+            JOIN role_permissions rp ON p.id = rp.permission_id
+            JOIN user_roles ur ON rp.role_id = ur.role_id
+            WHERE ur.user_id = ? AND p.code = ?
+        ''', (user_id, permission_code))
+        row = cursor.fetchone()
+        conn.close()
+        return row['count'] > 0
+    
+    @staticmethod
+    def get_user_permissions(user_id: int) -> List[Dict]:
+        """获取用户的所有权限"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT DISTINCT p.* FROM permissions p
+            JOIN role_permissions rp ON p.id = rp.permission_id
+            JOIN user_roles ur ON rp.role_id = ur.role_id
+            WHERE ur.user_id = ?
+        ''', (user_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
 
 
 # 初始化数据库

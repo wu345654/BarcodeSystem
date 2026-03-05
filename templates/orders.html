@@ -6,7 +6,7 @@
 <div class="card">
     <div class="card-header">
         <h2 class="card-title">📋 订单列表</h2>
-        <button class="btn btn-success" onclick="openModal()">➕ 新建订单</button>
+        <button class="btn btn-success" onclick="openModal()" id="createOrderBtn">➕ 新建订单</button>
     </div>
     
     <div class="search-box">
@@ -91,10 +91,25 @@ async function loadOrders(page = 1) {
         
         if (result.success) {
             renderOrders(result.data);
+        } else {
+            showAlert(result.message || '加载失败', 'danger');
         }
     } catch (error) {
         console.error('加载订单失败:', error);
         showAlert('加载订单失败', 'danger');
+    }
+}
+
+// 检查用户权限
+function checkOrderPermissions() {
+    // 控制新建订单按钮
+    const createBtn = document.getElementById('createOrderBtn');
+    console.log('检查新建订单权限:', typeof hasPermission, hasPermission ? hasPermission('order.create') : 'hasPermission not defined', window.userPermissions);
+    if (createBtn && typeof hasPermission === 'function' && !hasPermission('order.create')) {
+        console.log('隐藏新建订单按钮');
+        createBtn.style.display = 'none';
+    } else if (createBtn) {
+        console.log('显示新建订单按钮');
     }
 }
 
@@ -107,7 +122,7 @@ function renderOrders(orders) {
             <div class="empty-state">
                 <div class="empty-state-icon">📦</div>
                 <p>暂无订单数据</p>
-                <button class="btn btn-primary" onclick="openModal()" style="margin-top: 15px;">创建第一个订单</button>
+                ${typeof hasPermission === 'function' && hasPermission('order.create') ? '<button class="btn btn-primary" onclick="openModal()" style="margin-top: 15px;">创建第一个订单</button>' : ''}
             </div>
         `;
         return;
@@ -136,6 +151,17 @@ function renderOrders(orders) {
         const stats = order.scan_stats;
         const progress = stats.total > 0 ? (stats.scanned / stats.total * 100).toFixed(1) : 0;
         
+        // 生成操作按钮
+        let actionButtons = '<button class="btn btn-sm btn-primary" onclick="viewBarcodes(' + order.id + ')">条码</button>';
+        
+        if (typeof hasPermission === 'function' && hasPermission('order.edit')) {
+            actionButtons += ' <button class="btn btn-sm btn-secondary" onclick="editOrder(' + order.id + ')">编辑</button>';
+        }
+        
+        if (typeof hasPermission === 'function' && hasPermission('order.delete')) {
+            actionButtons += ' <button class="btn btn-sm btn-danger" onclick="deleteOrder(' + order.id + ')">删除</button>';
+        }
+        
         html += `
             <tr>
                 <td>${order.id}</td>
@@ -158,9 +184,7 @@ function renderOrders(orders) {
                 <td>${formatDate(order.created_at)}</td>
                 <td>
                     <div style="display: flex; gap: 5px;">
-                        <button class="btn btn-sm btn-primary" onclick="viewBarcodes(${order.id})">条码</button>
-                        <button class="btn btn-sm btn-secondary" onclick="editOrder(${order.id})">编辑</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteOrder(${order.id})">删除</button>
+                        ${actionButtons}
                     </div>
                 </td>
             </tr>
@@ -205,6 +229,8 @@ async function searchOrders() {
         
         if (result.success) {
             renderOrders(result.data);
+        } else {
+            showAlert(result.message || '搜索失败', 'danger');
         }
     } catch (error) {
         console.error('搜索订单失败:', error);
@@ -250,9 +276,12 @@ async function loadOrderForEdit(orderId) {
             document.getElementById('drawingNo').value = order.drawing_no || '';
             document.getElementById('product').value = order.product;
             document.getElementById('quantity').value = order.quantity;
+        } else {
+            showAlert(result.message || '加载失败', 'danger');
         }
     } catch (error) {
         console.error('加载订单数据失败:', error);
+        showAlert('加载订单数据失败', 'danger');
     }
 }
 
@@ -342,8 +371,6 @@ function viewBarcodes(orderId) {
     window.location.href = `/barcodes/${orderId}`;
 }
 
-
-
 // 页面加载时执行
 document.addEventListener('DOMContentLoaded', () => {
     loadOrders();
@@ -354,18 +381,28 @@ document.addEventListener('DOMContentLoaded', () => {
             searchOrders();
         }
     });
+    
+    // 检查权限
+    function checkPermissionsNow() {
+        if (typeof hasPermission === 'function' && window.userPermissions) {
+            console.log('立即检查权限');
+            checkOrderPermissions();
+        } else {
+            console.log('权限未加载，等待中...');
+        }
+    }
+    
+    // 立即检查一次
+    checkPermissionsNow();
+    
+    // 监听权限加载完成事件
+    window.addEventListener('permissionsLoaded', checkPermissionsNow);
 });
 
 // 点击模态框外部关闭
 document.getElementById('orderModal').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) {
         closeModal();
-    }
-});
-
-document.getElementById('barcodeModal').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) {
-        closeBarcodeModal();
     }
 });
 </script>

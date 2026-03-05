@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}角色管理 - 订单条码管理系统{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">🎭 角色管理</h2>
+        <button id="addRoleBtn" class="btn btn-primary">
+            <span>➕</span>
+            <span>添加角色</span>
+        </button>
+    </div>
+    <div class="card-body">
+        <div id="roleList">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<!-- 添加/编辑角色模态框 -->
+<div id="roleModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">添加角色</h3>
+            <button class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="roleForm">
+                <input type="hidden" id="roleId">
+                <div class="form-group">
+                    <label class="form-label" for="roleName">角色名称</label>
+                    <input type="text" class="form-control" id="roleName" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="roleDescription">描述</label>
+                    <textarea class="form-control" id="roleDescription" name="description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">权限</label>
+                    <div id="permissionSelect" style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <!-- 权限选项将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="cancelBtn">取消</button>
+            <button class="btn btn-primary" id="saveBtn">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// 加载角色列表
+async function loadRoleList() {
+    try {
+        const response = await fetch('/api/roles');
+        const result = await response.json();
+        
+        if (result.success) {
+            const roles = result.data;
+            const roleList = document.getElementById('roleList');
+            
+            if (roles.length === 0) {
+                roleList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🎭</div>
+                        <p>暂无角色数据</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>角色名称</th>
+                            <th>描述</th>
+                            <th>权限数量</th>
+                            <th>创建时间</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            for (const role of roles) {
+                // 获取角色权限数量
+                const permissionResponse = await fetch(`/api/roles/${role.id}`);
+                const permissionResult = await permissionResponse.json();
+                const permissions = permissionResult.success ? permissionResult.data.permissions : [];
+                
+                html += `
+                    <tr>
+                        <td>${role.id}</td>
+                        <td>${role.name}</td>
+                        <td>${role.description || '-'}</td>
+                        <td>${permissions.length}</td>
+                        <td>${role.created_at}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editRole(${role.id})">编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteRole(${role.id}, '${role.name}')">删除</button>
+                        </td>
+                    </tr>
+                `;
+            }
+            
+            html += '</tbody></table>';
+            roleList.innerHTML = html;
+        }
+    } catch (error) {
+        console.error('加载角色列表失败:', error);
+        showAlert('加载角色列表失败', 'danger');
+    }
+}
+
+// 加载权限列表
+async function loadPermissions() {
+    try {
+        const response = await fetch('/api/permissions');
+        const result = await response.json();
+        
+        if (result.success) {
+            const permissions = result.data;
+            const permissionSelect = document.getElementById('permissionSelect');
+            permissionSelect.innerHTML = '';
+            
+            permissions.forEach(permission => {
+                const label = document.createElement('label');
+                label.style.display = 'flex';
+                label.style.alignItems = 'center';
+                label.style.gap = '5px';
+                label.style.padding = '5px 10px';
+                label.style.border = '1px solid #e0e0e0';
+                label.style.borderRadius = '4px';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = permission.id;
+                checkbox.name = 'permission_ids';
+                
+                const span = document.createElement('span');
+                span.textContent = permission.name;
+                
+                label.appendChild(checkbox);
+                label.appendChild(span);
+                permissionSelect.appendChild(label);
+            });
+        }
+    } catch (error) {
+        console.error('加载权限列表失败:', error);
+    }
+}
+
+// 打开添加角色模态框
+function openAddRoleModal() {
+    document.getElementById('modalTitle').textContent = '添加角色';
+    document.getElementById('roleId').value = '';
+    document.getElementById('roleName').value = '';
+    document.getElementById('roleDescription').value = '';
+    
+    // 清空权限选择
+    const checkboxes = document.querySelectorAll('#permissionSelect input[type="checkbox"]');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+    });
+    
+    document.getElementById('roleModal').classList.add('active');
+}
+
+// 打开编辑角色模态框
+async function editRole(roleId) {
+    try {
+        const response = await fetch(`/api/roles/${roleId}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            const role = result.data;
+            document.getElementById('modalTitle').textContent = '编辑角色';
+            document.getElementById('roleId').value = role.id;
+            document.getElementById('roleName').value = role.name;
+            document.getElementById('roleDescription').value = role.description || '';
+            
+            // 加载权限列表并设置选中状态
+            await loadPermissions();
+            const rolePermissions = role.permissions.map(permission => permission.id);
+            const checkboxes = document.querySelectorAll('#permissionSelect input[type="checkbox"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = rolePermissions.includes(parseInt(checkbox.value));
+            });
+            
+            document.getElementById('roleModal').classList.add('active');
+        }
+    } catch (error) {
+        console.error('获取角色详情失败:', error);
+        showAlert('获取角色详情失败', 'danger');
+    }
+}
+
+// 保存角色
+async function saveRole() {
+    const roleId = document.getElementById('roleId').value;
+    const name = document.getElementById('roleName').value;
+    const description = document.getElementById('roleDescription').value;
+    
+    // 获取选中的权限
+    const permissionCheckboxes = document.querySelectorAll('#permissionSelect input[type="checkbox"]:checked');
+    const permissionIds = Array.from(permissionCheckboxes).map(checkbox => parseInt(checkbox.value));
+    
+    if (!name) {
+        showAlert('角色名称为必填项', 'warning');
+        return;
+    }
+    
+    try {
+        const url = roleId ? `/api/roles/${roleId}` : '/api/roles';
+        const method = roleId ? 'PUT' : 'POST';
+        
+        const data = {
+            name,
+            description,
+            permission_ids: permissionIds
+        };
+        
+        const response = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            showAlert(result.message, 'success');
+            document.getElementById('roleModal').classList.remove('active');
+            loadRoleList();
+        } else {
+            showAlert(result.message, 'danger');
+        }
+    } catch (error) {
+        console.error('保存角色失败:', error);
+        showAlert('保存角色失败', 'danger');
+    }
+}
+
+// 删除角色
+async function deleteRole(roleId, roleName) {
+    if (!confirm(`确定要删除角色 "${roleName}" 吗？`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/roles/${roleId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            showAlert(result.message, 'success');
+            loadRoleList();
+        } else {
+            showAlert(result.message, 'danger');
+        }
+    } catch (error) {
+        console.error('删除角色失败:', error);
+        showAlert('删除角色失败', 'danger');
+    }
+}
+
+// 关闭模态框
+function closeModal() {
+    document.getElementById('roleModal').classList.remove('active');
+}
+
+// 页面加载时执行
+document.addEventListener('DOMContentLoaded', () => {
+    loadRoleList();
+    loadPermissions();
+    
+    // 绑定事件
+    document.getElementById('addRoleBtn').addEventListener('click', openAddRoleModal);
+    document.getElementById('saveBtn').addEventListener('click', saveRole);
+    document.getElementById('cancelBtn').addEventListener('click', closeModal);
+    document.querySelector('.modal-close').addEventListener('click', closeModal);
+    
+    // 点击模态框外部关闭
+    document.getElementById('roleModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('roleModal')) {
+            closeModal();
+        }
+    });
+});
+</script>
+{% endblock %}

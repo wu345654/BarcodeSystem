@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
 from flask_cors import CORS
 import os
 from datetime import datetime
 from database import (
-    init_database, OrderModel, BarcodeModel, ScanRecordModel, LabelTemplateModel, get_connection
+    init_database, OrderModel, BarcodeModel, ScanRecordModel, LabelTemplateModel, 
+    UserModel, RoleModel, PermissionModel, UserRoleModel, RolePermissionModel, AuthModel, get_connection
 )
 from barcode_generator import create_barcodes_for_order, generate_barcode_image
 from reportlab.lib.pagesizes import A4, landscape
@@ -53,55 +54,138 @@ except (ImportError, OSError):
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 CORS(app)
+app.secret_key = 'your-secret-key-here'  # 用于session管理
 
 # 初始化数据库
 init_database()
 
 
+# ==================== 权限控制装饰器 ====================
+
+def login_required(f):
+    """登录装饰器"""
+    from functools import wraps
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    
+    return decorated_function
+
+
+def permission_required(permission_code):
+    """权限控制装饰器"""
+    from functools import wraps
+    
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+            
+            # 检查用户是否拥有权限
+            user_id = session['user_id']
+            if not AuthModel.check_user_permission(user_id, permission_code):
+                return jsonify({'success': False, 'message': '权限不足'}), 403
+            
+            return f(*args, **kwargs)
+        
+        return decorated_function
+    
+    return decorator
+
+
 # ==================== 页面路由 ====================
 
 @app.route('/')
+@login_required
 def index():
     """首页"""
     return render_template('index.html')
 
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """登录页面"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if not username or not password:
+            return render_template('login.html', error='请输入用户名和密码')
+        
+        # 查找用户
+        user = UserModel.get_by_username(username)
+        if not user:
+            return render_template('login.html', error='用户名或密码错误')
+        
+        # 验证密码（这里简化处理，实际应该使用密码哈希）
+        if user['password'] != password:
+            return render_template('login.html', error='用户名或密码错误')
+        
+        # 登录成功，保存用户信息到session
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['name'] = user['name']
+        
+        return redirect(url_for('index'))
+    
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    """注销"""
+    session.clear()
+    return redirect(url_for('login'))
+
+
 @app.route('/orders')
+@login_required
 def orders_page():
     """订单管理页面"""
     return render_template('orders.html')
 
 
 @app.route('/scan')
+@login_required
 def scan_page():
     """条码扫描页面"""
     return render_template('scan.html')
 
 
 @app.route('/barcodes/<int:order_id>')
+@login_required
 def barcodes_page(order_id):
     """条码列表页面"""
     return render_template('barcodes.html', order_id=order_id)
 
 
 @app.route('/print-label/<int:order_id>')
+@login_required
 def print_label_page(order_id):
     """打印标签页面"""
     return render_template('print_label.html', order_id=order_id)
 
+
 @app.route('/reports')
+@login_required
 def reports_page():
     """统计报表页面"""
     return render_template('reports.html')
 
 
 @app.route('/scan-records')
+@login_required
 def scan_records_page():
     """扫描记录页面"""
     return render_template('scan_records.html')
 
 
 @app.route('/label-print')
+@login_required
 def label_print_page():
     """标签打印页面"""
     # 获取所有订单（不分页）
@@ -110,6 +194,7 @@ def label_print_page():
 
 
 @app.route('/delivery-order')
+@login_required
 def delivery_order_page():
     """出库单页面"""
     # 获取所有订单（不分页）
@@ -117,9 +202,34 @@ def delivery_order_page():
     return render_template('delivery_order.html', orders=orders)
 
 
+# ==================== 用户管理页面路由 ====================
+
+@app.route('/user-management')
+@login_required
+def user_management_page():
+    """用户管理页面"""
+    return render_template('user_management.html')
+
+
+@app.route('/role-management')
+@login_required
+def role_management_page():
+    """角色管理页面"""
+    return render_template('role_management.html')
+
+
+@app.route('/permission-management')
+@login_required
+def permission_management_page():
+    """权限管理页面"""
+    return render_template('permission_management.html')
+
+
 # ==================== API路由 - 订单管理 ====================
 
 @app.route('/api/orders', methods=['GET'])
+@login_required
+@permission_required('order.view')
 def get_orders():
     """获取所有订单"""
     page = request.args.get('page', 1, type=int)
@@ -134,6 +244,8 @@ def get_orders():
 
 
 @app.route('/api/orders/<int:order_id>', methods=['GET'])
+@login_required
+@permission_required('order.view')
 def get_order(order_id):
     """获取单个订单"""
     order = OrderModel.get_by_id(order_id)
@@ -145,6 +257,8 @@ def get_order(order_id):
 
 
 @app.route('/api/orders', methods=['POST'])
+@login_required
+@permission_required('order.create')
 def create_order():
     """创建订单"""
     data = request.get_json()
@@ -183,6 +297,8 @@ def create_order():
 
 
 @app.route('/api/orders/<int:order_id>', methods=['PUT'])
+@login_required
+@permission_required('order.edit')
 def update_order(order_id):
     """更新订单"""
     data = request.get_json()
@@ -202,6 +318,8 @@ def update_order(order_id):
 
 
 @app.route('/api/orders/<int:order_id>', methods=['DELETE'])
+@login_required
+@permission_required('order.delete')
 def delete_order(order_id):
     """删除订单"""
     order = OrderModel.get_by_id(order_id)
@@ -218,6 +336,8 @@ def delete_order(order_id):
 
 
 @app.route('/api/orders/search', methods=['GET'])
+@login_required
+@permission_required('order.view')
 def search_orders():
     """搜索订单"""
     keyword = request.args.get('keyword', '')
@@ -234,6 +354,8 @@ def search_orders():
 # ==================== API路由 - 条码管理 ====================
 
 @app.route('/api/orders/<int:order_id>/barcodes', methods=['GET'])
+@login_required
+@permission_required('order.view')
 def get_barcodes(order_id):
     """获取订单的所有条码"""
     order = OrderModel.get_by_id(order_id)
@@ -255,6 +377,8 @@ def get_barcodes(order_id):
 
 
 @app.route('/api/barcodes/<barcode>', methods=['GET'])
+@login_required
+@permission_required('order.view')
 def get_barcode(barcode):
     """根据条码值获取条码信息"""
     barcode_info = BarcodeModel.get_by_barcode(barcode)
@@ -269,6 +393,8 @@ def get_barcode(barcode):
 # ==================== API路由 - 扫描功能 ====================
 
 @app.route('/api/scan', methods=['POST'])
+@login_required
+@permission_required('scan.scan')
 def scan_barcode():
     """
     扫描条码
@@ -348,8 +474,11 @@ def scan_barcode():
 
 
 @app.route('/api/scan-records', methods=['GET'])
+@login_required
+@permission_required('scan.view')
 def get_scan_records():
     """获取扫描记录"""
+
     page = request.args.get('page', 1, type=int)
     page_size = request.args.get('page_size', 20, type=int)
     limit = request.args.get('limit', 500, type=int)  # 保持向后兼容
@@ -387,8 +516,11 @@ def serve_font(filename):
 # ==================== 统计信息 ====================
 
 @app.route('/api/statistics', methods=['GET'])
+@login_required
+@permission_required('report.view')
 def get_statistics():
     """获取系统统计信息"""
+
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -431,8 +563,11 @@ def get_statistics():
 
 
 @app.route('/api/label-print/generate', methods=['POST'])
+@login_required
+@permission_required('label.print')
 def generate_label_pdf():
     """生成标签PDF（优先使用WeasyPrint，失败时使用reportlab）"""
+
     # 检查WeasyPrint是否可用
     if not weasyprint_available:
         # WeasyPrint不可用，使用reportlab作为替代
@@ -717,8 +852,11 @@ def generate_label_pdf():
 # ==================== API路由 - 出库单 ====================
 
 @app.route('/api/delivery-order/generate', methods=['POST'])
+@login_required
+@permission_required('delivery.generate')
 def generate_delivery_order():
     """生成出库单Excel"""
+
     # 检查pandas和openpyxl是否可用
     if not excel_available:
         return jsonify({'success': False, 'message': 'pandas和openpyxl未安装，请先安装这些依赖'}), 500
@@ -899,8 +1037,11 @@ def generate_delivery_order():
 # ==================== API路由 - 标签模板 ====================
 
 @app.route('/api/label-templates', methods=['GET'])
+@login_required
+@permission_required('label.template')
 def get_label_templates():
     """获取所有标签模板"""
+
     try:
         templates = LabelTemplateModel.get_all()
         return jsonify({
@@ -913,8 +1054,11 @@ def get_label_templates():
 
 
 @app.route('/api/label-templates', methods=['POST'])
+@login_required
+@permission_required('label.template')
 def create_label_template():
     """创建标签模板"""
+
     data = request.get_json()
     name = data.get('name')
     template = data.get('template')
@@ -937,8 +1081,11 @@ def create_label_template():
 
 
 @app.route('/api/label-templates/<int:template_id>', methods=['GET'])
+@login_required
+@permission_required('label.template')
 def get_label_template(template_id):
     """获取标签模板详情"""
+
     try:
         template = LabelTemplateModel.get_by_id(template_id)
         if not template:
@@ -953,8 +1100,11 @@ def get_label_template(template_id):
 
 
 @app.route('/api/label-templates/<int:template_id>', methods=['PUT'])
+@login_required
+@permission_required('label.template')
 def update_label_template(template_id):
     """更新标签模板"""
+
     data = request.get_json()
     name = data.get('name')
     template = data.get('template')
@@ -973,8 +1123,11 @@ def update_label_template(template_id):
 
 
 @app.route('/api/label-templates/<int:template_id>', methods=['DELETE'])
+@login_required
+@permission_required('label.template')
 def delete_label_template(template_id):
     """删除标签模板"""
+
     try:
         success = LabelTemplateModel.delete(template_id)
         if success:
@@ -983,6 +1136,383 @@ def delete_label_template(template_id):
     except Exception as e:
         print(f"删除模板失败: {str(e)}")
         return jsonify({'success': False, 'message': f'删除模板失败: {str(e)}'}), 500
+
+
+# ==================== API路由 - 用户管理 ====================
+
+@app.route('/api/users', methods=['GET'])
+@login_required
+@permission_required('user.manage')
+def get_users():
+    """获取所有用户"""
+
+    try:
+        users = UserModel.get_all()
+        return jsonify({'success': True, 'data': users})
+    except Exception as e:
+        print(f"获取用户列表失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取用户列表失败: {str(e)}'}), 500
+
+
+@app.route('/api/users', methods=['POST'])
+@login_required
+@permission_required('user.manage')
+def create_user():
+    """创建用户"""
+
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    name = data.get('name')
+    email = data.get('email')
+    role_ids = data.get('role_ids', [])
+    
+    if not username or not password or not name:
+        return jsonify({'success': False, 'message': '用户名、密码和姓名为必填项'}), 400
+    
+    try:
+        # 创建用户
+        user_id = UserModel.create(username, password, name, email)
+        
+        # 分配角色
+        for role_id in role_ids:
+            UserRoleModel.create(user_id, role_id)
+        
+        return jsonify({'success': True, 'message': '用户创建成功', 'data': {'user_id': user_id}})
+    except Exception as e:
+        print(f"创建用户失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'创建用户失败: {str(e)}'}), 500
+
+
+@app.route('/api/users/<int:user_id>', methods=['GET'])
+@login_required
+@permission_required('user.manage')
+def get_user(user_id):
+    """获取用户详情"""
+
+    try:
+        user = UserModel.get_by_id(user_id)
+        if not user:
+            return jsonify({'success': False, 'message': '用户不存在'}), 404
+        
+        # 获取用户角色
+        roles = UserRoleModel.get_roles_by_user(user_id)
+        user['roles'] = roles
+        
+        return jsonify({'success': True, 'data': user})
+    except Exception as e:
+        print(f"获取用户详情失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取用户详情失败: {str(e)}'}), 500
+
+
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+@login_required
+@permission_required('user.manage')
+def update_user(user_id):
+    """更新用户"""
+
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    password = data.get('password')
+    role_ids = data.get('role_ids', [])
+    
+    try:
+        # 更新用户信息
+        updates = {}
+        if name:
+            updates['name'] = name
+        if email:
+            updates['email'] = email
+        if password:
+            updates['password'] = password
+        
+        if updates:
+            UserModel.update(user_id, **updates)
+        
+        # 更新角色
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM user_roles WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+        
+        for role_id in role_ids:
+            UserRoleModel.create(user_id, role_id)
+        
+        return jsonify({'success': True, 'message': '用户更新成功'})
+    except Exception as e:
+        print(f"更新用户失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'更新用户失败: {str(e)}'}), 500
+
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@login_required
+@permission_required('user.manage')
+def delete_user(user_id):
+    """删除用户"""
+
+    try:
+        success = UserModel.delete(user_id)
+        if success:
+            return jsonify({'success': True, 'message': '用户删除成功'})
+        return jsonify({'success': False, 'message': '用户不存在'}), 404
+    except Exception as e:
+        print(f"删除用户失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'删除用户失败: {str(e)}'}), 500
+
+
+# ==================== API路由 - 角色管理 ====================
+
+@app.route('/api/roles', methods=['GET'])
+@login_required
+@permission_required('user.manage')
+def get_roles():
+    """获取所有角色"""
+
+    try:
+        roles = RoleModel.get_all()
+        return jsonify({'success': True, 'data': roles})
+    except Exception as e:
+        print(f"获取角色列表失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取角色列表失败: {str(e)}'}), 500
+
+
+@app.route('/api/roles', methods=['POST'])
+@login_required
+@permission_required('user.manage')
+def create_role():
+    """创建角色"""
+
+    data = request.get_json()
+    name = data.get('name')
+    description = data.get('description')
+    permission_ids = data.get('permission_ids', [])
+    
+    if not name:
+        return jsonify({'success': False, 'message': '角色名称为必填项'}), 400
+    
+    try:
+        # 创建角色
+        role_id = RoleModel.create(name, description)
+        
+        # 分配权限
+        for permission_id in permission_ids:
+            RolePermissionModel.create(role_id, permission_id)
+        
+        return jsonify({'success': True, 'message': '角色创建成功', 'data': {'role_id': role_id}})
+    except Exception as e:
+        print(f"创建角色失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'创建角色失败: {str(e)}'}), 500
+
+
+@app.route('/api/roles/<int:role_id>', methods=['GET'])
+@login_required
+@permission_required('user.manage')
+def get_role(role_id):
+    """获取角色详情"""
+
+    try:
+        role = RoleModel.get_by_id(role_id)
+        if not role:
+            return jsonify({'success': False, 'message': '角色不存在'}), 404
+        
+        # 获取角色权限
+        permissions = RolePermissionModel.get_permissions_by_role(role_id)
+        role['permissions'] = permissions
+        
+        return jsonify({'success': True, 'data': role})
+    except Exception as e:
+        print(f"获取角色详情失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取角色详情失败: {str(e)}'}), 500
+
+
+@app.route('/api/roles/<int:role_id>', methods=['PUT'])
+@login_required
+@permission_required('user.manage')
+def update_role(role_id):
+    """更新角色"""
+
+    data = request.get_json()
+    name = data.get('name')
+    description = data.get('description')
+    permission_ids = data.get('permission_ids', [])
+    
+    try:
+        # 更新角色信息
+        conn = get_connection()
+        cursor = conn.cursor()
+        if name:
+            cursor.execute('UPDATE roles SET name = ?, description = ? WHERE id = ?', (name, description, role_id))
+            conn.commit()
+        conn.close()
+        
+        # 更新权限
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM role_permissions WHERE role_id = ?', (role_id,))
+        conn.commit()
+        conn.close()
+        
+        for permission_id in permission_ids:
+            RolePermissionModel.create(role_id, permission_id)
+        
+        return jsonify({'success': True, 'message': '角色更新成功'})
+    except Exception as e:
+        print(f"更新角色失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'更新角色失败: {str(e)}'}), 500
+
+
+@app.route('/api/roles/<int:role_id>', methods=['DELETE'])
+@login_required
+@permission_required('user.manage')
+def delete_role(role_id):
+    """删除角色"""
+
+    try:
+        # 先删除角色权限关联
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM role_permissions WHERE role_id = ?', (role_id,))
+        cursor.execute('DELETE FROM user_roles WHERE role_id = ?', (role_id,))
+        conn.commit()
+        conn.close()
+        
+        # 删除角色
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM roles WHERE id = ?', (role_id,))
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if affected > 0:
+            return jsonify({'success': True, 'message': '角色删除成功'})
+        return jsonify({'success': False, 'message': '角色不存在'}), 404
+    except Exception as e:
+        print(f"删除角色失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'删除角色失败: {str(e)}'}), 500
+
+
+# ==================== API路由 - 权限管理 ====================
+
+@app.route('/api/permissions', methods=['GET'])
+@login_required
+@permission_required('user.manage')
+def get_permissions():
+    """获取所有权限"""
+
+    try:
+        permissions = PermissionModel.get_all()
+        return jsonify({'success': True, 'data': permissions})
+    except Exception as e:
+        print(f"获取权限列表失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取权限列表失败: {str(e)}'}), 500
+
+
+@app.route('/api/permissions', methods=['POST'])
+@login_required
+@permission_required('user.manage')
+def create_permission():
+    """创建权限"""
+
+    data = request.get_json()
+    name = data.get('name')
+    code = data.get('code')
+    description = data.get('description')
+    
+    if not name or not code:
+        return jsonify({'success': False, 'message': '权限名称和代码为必填项'}), 400
+    
+    try:
+        permission_id = PermissionModel.create(name, code, description)
+        return jsonify({'success': True, 'message': '权限创建成功', 'data': {'permission_id': permission_id}})
+    except Exception as e:
+        print(f"创建权限失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'创建权限失败: {str(e)}'}), 500
+
+
+@app.route('/api/permissions/<int:permission_id>', methods=['GET'])
+@login_required
+@permission_required('user.manage')
+def get_permission(permission_id):
+    """获取权限详情"""
+
+    try:
+        permission = PermissionModel.get_by_id(permission_id)
+        if not permission:
+            return jsonify({'success': False, 'message': '权限不存在'}), 404
+        return jsonify({'success': True, 'data': permission})
+    except Exception as e:
+        print(f"获取权限详情失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取权限详情失败: {str(e)}'}), 500
+
+
+@app.route('/api/permissions/<int:permission_id>', methods=['PUT'])
+@login_required
+@permission_required('user.manage')
+def update_permission(permission_id):
+    """更新权限"""
+
+    data = request.get_json()
+    name = data.get('name')
+    code = data.get('code')
+    description = data.get('description')
+    
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        if name and code:
+            cursor.execute('UPDATE permissions SET name = ?, code = ?, description = ? WHERE id = ?', (name, code, description, permission_id))
+            conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': '权限更新成功'})
+    except Exception as e:
+        print(f"更新权限失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'更新权限失败: {str(e)}'}), 500
+
+
+@app.route('/api/permissions/<int:permission_id>', methods=['DELETE'])
+@login_required
+@permission_required('user.manage')
+def delete_permission(permission_id):
+    """删除权限"""
+
+    try:
+        # 先删除角色权限关联
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM role_permissions WHERE permission_id = ?', (permission_id,))
+        conn.commit()
+        conn.close()
+        
+        # 删除权限
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM permissions WHERE id = ?', (permission_id,))
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if affected > 0:
+            return jsonify({'success': True, 'message': '权限删除成功'})
+        return jsonify({'success': False, 'message': '权限不存在'}), 404
+    except Exception as e:
+        print(f"删除权限失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'删除权限失败: {str(e)}'}), 500
+
+
+@app.route('/api/user/permissions', methods=['GET'])
+@login_required
+def get_user_permissions():
+    """获取当前用户的权限"""
+    try:
+        user_id = session['user_id']
+        permissions = AuthModel.get_user_permissions(user_id)
+        return jsonify({'success': True, 'data': permissions})
+    except Exception as e:
+        print(f"获取用户权限失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取用户权限失败: {str(e)}'}), 500
 
 
 def generate_label_pdf_fallback():
