@@ -69,6 +69,17 @@ def init_database():
         )
     ''')
     
+    # 标签模板表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS label_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            template TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -292,6 +303,70 @@ class ScanRecordModel:
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
+
+
+class LabelTemplateModel:
+    """标签模板数据模型"""
+    
+    @staticmethod
+    def create(name: str, template: str) -> int:
+        """创建标签模板"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO label_templates (name, template)
+            VALUES (?, ?)
+        ''', (name, template))
+        template_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return template_id
+    
+    @staticmethod
+    def get_by_id(template_id: int) -> Optional[Dict]:
+        """根据ID获取标签模板"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM label_templates WHERE id = ?', (template_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_all() -> List[Dict]:
+        """获取所有标签模板"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM label_templates ORDER BY created_at DESC')
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    
+    @staticmethod
+    def update(template_id: int, name: str, template: str) -> bool:
+        """更新标签模板"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE label_templates 
+            SET name = ?, template = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (name, template, template_id))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def delete(template_id: int) -> bool:
+        """删除标签模板"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM label_templates WHERE id = ?', (template_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
 
 
 # 初始化数据库

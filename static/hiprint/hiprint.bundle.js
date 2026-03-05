@@ -1,0 +1,1 @@
+Redirecting to /vue-plugin-hiprint@0.0.60/dist/hiprint.bundle.js

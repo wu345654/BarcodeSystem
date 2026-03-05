@@ -1,0 +1,746 @@
+{% extends 'base.html' %}
+
+{% block title %}标签打印 - 订单条码管理系统{% endblock %}
+
+{% block extra_css %}
+    <!-- 打印样式 -->
+    <link rel="stylesheet" type="text/css" media="print" href="/static/hiprint/print-lock.css">
+    <style>
+        .design-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .toolbox {
+            width: 200px;
+            background: #f5f7fa;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        
+        .toolbox h4 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .tool-item {
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            cursor: grab;
+            border: 1px solid #e0e0e0;
+            transition: all 0.3s;
+        }
+        
+        .tool-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+        }
+        
+        .design-area {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        }
+        
+        #designCanvas {
+            width: 100%;
+            min-height: 600px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            position: relative;
+            background-color: #f9f9f9;
+        }
+        
+        .label-template {
+            width: 80mm;
+            height: 50mm;
+            background: white;
+            border: 1px solid #ccc;
+            margin: 20px auto;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .design-element {
+            position: absolute;
+            border: 1px solid #667eea;
+            border-radius: 4px;
+            cursor: move;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .design-element:hover {
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+        }
+        
+        .element-options {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f7fa;
+            border-radius: 8px;
+        }
+        
+        .element-options h5 {
+            margin-bottom: 10px;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">📋 标签打印</h2>
+            <div>
+                <button id="printBtn" class="btn btn-primary">
+                    <span>🖨️</span> 打印标签
+                </button>
+                <button id="saveTemplateBtn" class="btn btn-success">
+                    <span>💾</span> 保存模板
+                </button>
+            </div>
+        </div>
+        
+        <div class="card-body">
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">选择订单</label>
+                    <select id="orderSelect" class="form-control">
+                        <option value="">-- 请选择订单 --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">标签尺寸</label>
+                    <select id="labelSize" class="form-control">
+                        <option value="80x50">80mm × 50mm</option>
+                        <option value="60x40">60mm × 40mm</option>
+                        <option value="40x30">40mm × 30mm</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">标签数量</label>
+                    <input type="number" id="labelCount" class="form-control" min="1" value="10">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">打印方向</label>
+                    <select id="printDirection" class="form-control">
+                        <option value="portrait">纵向</option>
+                        <option value="landscape">横向</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="design-container">
+                <!-- 工具箱 -->
+                <div class="toolbox">
+                    <h4>📦 元素工具箱</h4>
+                    <div class="tool-item" draggable="true" data-type="text">文本</div>
+                    <div class="tool-item" draggable="true" data-type="barcode">条形码</div>
+                    <div class="tool-item" draggable="true" data-type="qrcode">二维码</div>
+                    <div class="tool-item" draggable="true" data-type="image">图片</div>
+                    <div class="tool-item" draggable="true" data-type="line">线条</div>
+                    <div class="tool-item" draggable="true" data-type="rect">矩形</div>
+                </div>
+                
+                <!-- 设计区域 -->
+                <div class="design-area">
+                    <h4>🎨 标签设计</h4>
+                    <div id="designCanvas">
+                        <div class="label-template" id="labelTemplate">
+                            <!-- 设计元素将在这里添加 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 元素选项 -->
+                    <div class="element-options" id="elementOptions">
+                        <h5>元素属性</h5>
+                        <div id="elementOptionsContent">
+                            <p>选择一个元素来编辑其属性</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mt-4">
+        <div class="card-header">
+            <h3 class="card-title">👀 标签预览</h3>
+        </div>
+        <div class="card-body">
+            <div id="labelPreview" class="barcode-grid">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📄</div>
+                    <p>请选择订单查看标签预览</p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+    <script>
+        // 全局变量
+        let currentOrder = null;
+        let designElements = [];
+        let currentElement = null;
+        let isDragging = false;
+        let startX, startY, elementStartX, elementStartY;
+        
+        // 加载订单列表
+        async function loadOrders() {
+            try {
+                const response = await fetch('/api/orders');
+                const data = await response.json();
+                if (data.success) {
+                    const orderSelect = document.getElementById('orderSelect');
+                    orderSelect.innerHTML = '<option value="">-- 请选择订单 --</option>';
+                    
+                    data.data.forEach(order => {
+                        const option = document.createElement('option');
+                        option.value = order.id;
+                        option.textContent = `${order.work_tag} - ${order.name}`;
+                        orderSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('加载订单失败:', error);
+                showAlert('加载订单失败', 'danger');
+            }
+        }
+        
+        // 加载标签预览
+        async function loadLabelPreview(orderId) {
+            if (!orderId) {
+                document.getElementById('labelPreview').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p>请选择订单查看标签预览</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/orders/${orderId}/barcodes`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentOrder = data.data.order;
+                    const labelPreview = document.getElementById('labelPreview');
+                    labelPreview.innerHTML = '';
+                    
+                    const labelCount = parseInt(document.getElementById('labelCount').value) || 10;
+                    const barcodes = data.data.barcodes.slice(0, labelCount);
+                    
+                    barcodes.forEach(barcode => {
+                        const labelItem = document.createElement('div');
+                        labelItem.className = 'barcode-item';
+                        
+                        // 检查是否有设计的模板
+                        if (designElements.length > 0) {
+                            // 根据设计的模板生成预览
+                            let previewContent = '<div style="position: relative; width: 100%; height: 150px; border: 1px solid #ccc; padding: 10px;">';
+                            
+                            // 绘制条码图片（如果元素类型为barcode）
+                            const barcodeElement = designElements.find(el => el.type === 'barcode');
+                            if (!barcodeElement) {
+                                // 如果没有条码元素，添加默认条码图片
+                                previewContent += `<div style="position: absolute; left: 20px; top: 80px; width: 150px; height: 40px; border: 1px solid #667eea; padding: 2px;"><img src="${barcode.image_path}" alt="条码" style="width: 100%; height: 100%; object-fit: contain;"></div>`;
+                            }
+                            
+                            designElements.forEach(element => {
+                                const elementType = element.type;
+                                const elementX = element.x;
+                                const elementY = element.y;
+                                const elementWidth = element.width;
+                                const elementHeight = element.height;
+                                let elementContent = element.content || element.element.textContent;
+                                
+                                // 替换变量
+                                elementContent = elementContent
+                                    .replace(/\{\{order\.work_tag\}\}/g, data.data.order.work_tag)
+                                    .replace(/\{\{order\.name\}\}/g, data.data.order.name)
+                                    .replace(/\{\{order\.product\}\}/g, data.data.order.product)
+                                    .replace(/\{\{order\.color\}\}/g, data.data.order.color || '-')
+                                    .replace(/\{\{order\.drawing_no\}\}/g, data.data.order.drawing_no || '-')
+                                    .replace(/\{\{order\.quantity\}\}/g, data.data.order.quantity || '-')
+                                    .replace(/\{\{barcode\.barcode\}\}/g, barcode.barcode)
+                                    .replace(/\{\{barcode\.sequence_no\}\}/g, barcode.sequence_no);
+                                
+                                // 根据元素类型生成预览
+                                switch (elementType) {
+                                    case 'text':
+                                        previewContent += `<div style="position: absolute; left: ${elementX}px; top: ${elementY}px; width: ${elementWidth}px; height: ${elementHeight}px; border: 1px solid #667eea; padding: 2px; font-size: 12px;">${elementContent}</div>`;
+                                        break;
+                                    case 'barcode':
+                                        previewContent += `<div style="position: absolute; left: ${elementX}px; top: ${elementY}px; width: ${elementWidth}px; height: ${elementHeight}px; border: 1px solid #667eea; padding: 2px;"><img src="${barcode.image_path}" alt="条码" style="width: 100%; height: 100%; object-fit: contain;"></div>`;
+                                        break;
+                                    case 'line':
+                                        previewContent += `<div style="position: absolute; left: ${elementX}px; top: ${elementY}px; width: ${elementWidth}px; height: ${elementHeight}px; background-color: black;"></div>`;
+                                        break;
+                                    case 'rect':
+                                        previewContent += `<div style="position: absolute; left: ${elementX}px; top: ${elementY}px; width: ${elementWidth}px; height: ${elementHeight}px; border: 1px solid black;"></div>`;
+                                        break;
+                                    default:
+                                        previewContent += `<div style="position: absolute; left: ${elementX}px; top: ${elementY}px; width: ${elementWidth}px; height: ${elementHeight}px; border: 1px solid #667eea; padding: 2px;">${elementContent}</div>`;
+                                }
+                            });
+                            
+                            previewContent += '</div>';
+                            labelItem.innerHTML = previewContent;
+                        } else {
+                            // 使用默认模板
+                            labelItem.innerHTML = `
+                                <img src="${barcode.image_path}" alt="条码">
+                                <div class="barcode-number">${barcode.barcode}</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 10px;">
+                                    <p>工程名称: ${data.data.order.work_tag}</p>
+                                    <p>订单名称: ${data.data.order.name}</p>
+                                    <p>产品名称: ${data.data.order.product}</p>
+                                    <p>颜色: ${data.data.order.color || '-'}</p>
+                                    <p>图号: ${data.data.order.drawing_no || '-'}</p>
+                                    <p>序号: ${barcode.sequence_no}</p>
+                                </div>
+                            `;
+                        }
+                        
+                        labelPreview.appendChild(labelItem);
+                    });
+                }
+            } catch (error) {
+                console.error('加载标签预览失败:', error);
+                showAlert('加载标签预览失败', 'danger');
+            }
+        }
+        
+        // 初始化设计器
+        function initDesigner() {
+            const toolboxItems = document.querySelectorAll('.tool-item');
+            const designCanvas = document.getElementById('designCanvas');
+            const labelTemplate = document.getElementById('labelTemplate');
+            
+            // 为工具箱项目添加拖拽事件
+            toolboxItems.forEach(item => {
+                item.addEventListener('dragstart', function(e) {
+                    e.dataTransfer.setData('text/plain', this.dataset.type);
+                });
+            });
+            
+            // 为设计区域添加拖放事件
+            labelTemplate.addEventListener('dragover', function(e) {
+                e.preventDefault();
+            });
+            
+            labelTemplate.addEventListener('drop', function(e) {
+                e.preventDefault();
+                const elementType = e.dataTransfer.getData('text/plain');
+                
+                // 计算元素位置
+                const rect = labelTemplate.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // 创建新元素
+                createDesignElement(elementType, x, y);
+            });
+        }
+        
+        // 创建设计元素
+        function createDesignElement(type, x, y) {
+            const labelTemplate = document.getElementById('labelTemplate');
+            const element = document.createElement('div');
+            element.className = 'design-element';
+            element.dataset.type = type;
+            
+            // 设置元素样式
+            element.style.left = `${x}px`;
+            element.style.top = `${y}px`;
+            
+            // 根据类型设置默认大小和内容
+            switch (type) {
+                case 'text':
+                    element.style.width = '100px';
+                    element.style.height = '30px';
+                    element.textContent = '文本';
+                    break;
+                case 'barcode':
+                    element.style.width = '120px';
+                    element.style.height = '40px';
+                    element.textContent = '条码';
+                    break;
+                case 'qrcode':
+                    element.style.width = '60px';
+                    element.style.height = '60px';
+                    element.textContent = '二维码';
+                    break;
+                case 'image':
+                    element.style.width = '80px';
+                    element.style.height = '60px';
+                    element.textContent = '图片';
+                    break;
+                case 'line':
+                    element.style.width = '100px';
+                    element.style.height = '2px';
+                    element.style.backgroundColor = 'black';
+                    break;
+                case 'rect':
+                    element.style.width = '80px';
+                    element.style.height = '50px';
+                    break;
+            }
+            
+            // 添加元素到模板
+            labelTemplate.appendChild(element);
+            
+            // 添加元素到设计元素列表
+            designElements.push({
+                id: Date.now(),
+                type: type,
+                element: element,
+                x: x,
+                y: y,
+                width: parseInt(element.style.width),
+                height: parseInt(element.style.height)
+            });
+            
+            // 添加点击事件
+            element.addEventListener('click', function(e) {
+                e.stopPropagation();
+                selectElement(element);
+            });
+            
+            // 添加拖拽事件
+            element.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+                startDrag(e, element);
+            });
+        }
+        
+        // 选择元素
+        function selectElement(element) {
+            // 取消之前的选择
+            if (currentElement) {
+                currentElement.style.borderColor = '#667eea';
+                currentElement.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+            }
+            
+            // 选择当前元素
+            currentElement = element;
+            element.style.borderColor = '#ff6b6b';
+            element.style.backgroundColor = 'rgba(255, 107, 107, 0.1)';
+            
+            // 显示元素选项
+            showElementOptions(element);
+        }
+        
+        // 显示元素选项
+        function showElementOptions(element) {
+            const optionsContent = document.getElementById('elementOptionsContent');
+            const type = element.dataset.type;
+            
+            optionsContent.innerHTML = `
+                <div class="form-group">
+                    <label class="form-label">元素类型: ${type}</label>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">位置 X:</label>
+                    <input type="number" class="form-control" id="elementX" value="${parseInt(element.style.left)}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">位置 Y:</label>
+                    <input type="number" class="form-control" id="elementY" value="${parseInt(element.style.top)}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">宽度:</label>
+                    <input type="number" class="form-control" id="elementWidth" value="${parseInt(element.style.width)}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">高度:</label>
+                    <input type="number" class="form-control" id="elementHeight" value="${parseInt(element.style.height)}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">内容:</label>
+                    <input type="text" class="form-control" id="elementContent" value="${element.textContent}">
+                </div>
+                ${type === 'text' ? `
+                <div class="form-group">
+                    <label class="form-label">绑定数据源:</label>
+                    <select class="form-control" id="dataSource">
+                        <option value="">-- 选择数据源 --</option>
+                        <optgroup label="订单信息">
+                            <option value="{% raw %}{{order.work_tag}}{% endraw %}">工程名称</option>
+                            <option value="{% raw %}{{order.name}}{% endraw %}">订单名称</option>
+                            <option value="{% raw %}{{order.product}}{% endraw %}">产品名称</option>
+                            <option value="{% raw %}{{order.color}}{% endraw %}">颜色</option>
+                            <option value="{% raw %}{{order.drawing_no}}{% endraw %}">图号</option>
+                            <option value="{% raw %}{{order.quantity}}{% endraw %}">数量</option>
+                        </optgroup>
+                        <optgroup label="条码信息">
+                            <option value="{% raw %}{{barcode.barcode}}{% endraw %}">条码</option>
+                            <option value="{% raw %}{{barcode.sequence_no}}{% endraw %}">序号</option>
+                        </optgroup>
+                    </select>
+                </div>
+                ` : ''}
+                <button class="btn btn-danger mt-2" id="deleteElementBtn">删除元素</button>
+            `;
+            
+            // 添加事件监听器
+            document.getElementById('elementX').addEventListener('change', function() {
+                element.style.left = `${this.value}px`;
+                // 更新designElements数组中元素的位置
+                const elementIndex = designElements.findIndex(el => el.element === element);
+                if (elementIndex !== -1) {
+                    designElements[elementIndex].x = parseInt(this.value);
+                }
+            });
+            
+            document.getElementById('elementY').addEventListener('change', function() {
+                element.style.top = `${this.value}px`;
+                // 更新designElements数组中元素的位置
+                const elementIndex = designElements.findIndex(el => el.element === element);
+                if (elementIndex !== -1) {
+                    designElements[elementIndex].y = parseInt(this.value);
+                }
+            });
+            
+            document.getElementById('elementWidth').addEventListener('change', function() {
+                element.style.width = `${this.value}px`;
+                // 更新designElements数组中元素的宽度
+                const elementIndex = designElements.findIndex(el => el.element === element);
+                if (elementIndex !== -1) {
+                    designElements[elementIndex].width = parseInt(this.value);
+                }
+            });
+            
+            document.getElementById('elementHeight').addEventListener('change', function() {
+                element.style.height = `${this.value}px`;
+                // 更新designElements数组中元素的高度
+                const elementIndex = designElements.findIndex(el => el.element === element);
+                if (elementIndex !== -1) {
+                    designElements[elementIndex].height = parseInt(this.value);
+                }
+            });
+            
+            document.getElementById('elementContent').addEventListener('change', function() {
+                element.textContent = this.value;
+                // 更新designElements数组中元素的内容
+                const elementIndex = designElements.findIndex(el => el.element === element);
+                if (elementIndex !== -1) {
+                    designElements[elementIndex].content = this.value;
+                }
+            });
+            
+            // 数据源绑定事件
+            if (type === 'text' && document.getElementById('dataSource')) {
+                document.getElementById('dataSource').addEventListener('change', function() {
+                    if (this.value) {
+                        element.textContent = this.value;
+                        document.getElementById('elementContent').value = this.value;
+                        // 更新designElements数组中元素的内容
+                        const elementIndex = designElements.findIndex(el => el.element === element);
+                        if (elementIndex !== -1) {
+                            designElements[elementIndex].content = this.value;
+                        }
+                    }
+                });
+            }
+            
+            document.getElementById('deleteElementBtn').addEventListener('click', function() {
+                element.remove();
+                designElements = designElements.filter(el => el.element !== element);
+                currentElement = null;
+                document.getElementById('elementOptionsContent').innerHTML = '<p>选择一个元素来编辑其属性</p>';
+            });
+        }
+        
+        // 开始拖拽
+        function startDrag(e, element) {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            elementStartX = parseInt(element.style.left);
+            elementStartY = parseInt(element.style.top);
+            
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+        }
+        
+        // 拖拽中
+        function drag(e) {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+            
+            currentElement.style.left = `${elementStartX + deltaX}px`;
+            currentElement.style.top = `${elementStartY + deltaY}px`;
+        }
+        
+        // 停止拖拽
+        function stopDrag() {
+            isDragging = false;
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+            
+            // 更新designElements数组中元素的位置和大小
+            if (currentElement) {
+                const elementIndex = designElements.findIndex(el => el.element === currentElement);
+                if (elementIndex !== -1) {
+                    designElements[elementIndex].x = parseInt(currentElement.style.left);
+                    designElements[elementIndex].y = parseInt(currentElement.style.top);
+                    designElements[elementIndex].width = parseInt(currentElement.style.width);
+                    designElements[elementIndex].height = parseInt(currentElement.style.height);
+                }
+            }
+        }
+        
+        // 打印标签
+        document.getElementById('printBtn').addEventListener('click', async function() {
+            const orderId = document.getElementById('orderSelect').value;
+            if (!orderId) {
+                showAlert('请选择订单', 'warning');
+                return;
+            }
+            
+            try {
+                // 创建模板数据
+                const templateData = {
+                    elements: designElements.map(el => ({
+                        type: el.type,
+                        x: el.x,
+                        y: el.y,
+                        width: el.width,
+                        height: el.height,
+                        content: el.content || el.element.textContent
+                    }))
+                };
+                
+                const response = await fetch(`/api/label-print/generate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        order_id: orderId,
+                        label_size: document.getElementById('labelSize').value,
+                        label_count: parseInt(document.getElementById('labelCount').value) || 10,
+                        print_direction: document.getElementById('printDirection').value,
+                        template: JSON.stringify(templateData)
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    // 打开PDF预览
+                    window.open(data.data.pdf_url, '_blank');
+                } else {
+                    showAlert(data.message, 'danger');
+                }
+            } catch (error) {
+                console.error('生成标签失败:', error);
+                showAlert('生成标签失败', 'danger');
+            }
+        });
+        
+        // 保存模板
+        document.getElementById('saveTemplateBtn').addEventListener('click', function() {
+            const templateData = {
+                elements: designElements.map(el => ({
+                    type: el.type,
+                    x: parseInt(el.element.style.left),
+                    y: parseInt(el.element.style.top),
+                    width: parseInt(el.element.style.width),
+                    height: parseInt(el.element.style.height),
+                    content: el.element.textContent
+                }))
+            };
+            
+            localStorage.setItem('labelTemplate', JSON.stringify(templateData));
+            showAlert('模板保存成功', 'success');
+        });
+        
+        // 加载保存的模板
+        function loadSavedTemplate() {
+            const savedTemplate = localStorage.getItem('labelTemplate');
+            if (savedTemplate) {
+                try {
+                    const templateData = JSON.parse(savedTemplate);
+                    templateData.elements.forEach(elData => {
+                        const element = document.createElement('div');
+                        element.className = 'design-element';
+                        element.dataset.type = elData.type;
+                        element.style.left = `${elData.x}px`;
+                        element.style.top = `${elData.y}px`;
+                        element.style.width = `${elData.width}px`;
+                        element.style.height = `${elData.height}px`;
+                        element.textContent = elData.content;
+                        
+                        document.getElementById('labelTemplate').appendChild(element);
+                        
+                        designElements.push({
+                            id: Date.now(),
+                            type: elData.type,
+                            element: element,
+                            x: elData.x,
+                            y: elData.y,
+                            width: elData.width,
+                            height: elData.height
+                        });
+                        
+                        // 添加事件监听器
+                        element.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            selectElement(element);
+                        });
+                        
+                        element.addEventListener('mousedown', function(e) {
+                            e.stopPropagation();
+                            startDrag(e, element);
+                        });
+                    });
+                } catch (error) {
+                    console.error('加载模板失败:', error);
+                }
+            }
+        }
+        
+        // 事件监听
+        document.getElementById('orderSelect').addEventListener('change', function() {
+            loadLabelPreview(this.value);
+        });
+        
+        document.getElementById('labelCount').addEventListener('change', function() {
+            const orderId = document.getElementById('orderSelect').value;
+            if (orderId) {
+                loadLabelPreview(orderId);
+            }
+        });
+        
+        // 点击空白处取消选择
+        document.getElementById('designCanvas').addEventListener('click', function() {
+            if (currentElement) {
+                currentElement.style.borderColor = '#667eea';
+                currentElement.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+                currentElement = null;
+                document.getElementById('elementOptionsContent').innerHTML = '<p>选择一个元素来编辑其属性</p>';
+            }
+        });
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadOrders();
+            initDesigner();
+            loadSavedTemplate();
+        });
+    </script>
+{% endblock %}

@@ -1,62 +1,30 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+# 忽略数据库文件
+order_system.db
 
-# Virtual Environment
+# 忽略缓存文件
+__pycache__/
+*.pyc
+
+# 忽略生成的文件
+static/barcodes/
+static/delivery_orders/
+static/labels/
+
+# 忽略虚拟环境
 venv/
-ENV/
 env/
 
-# IDE
+# 忽略打包文件
+build/
+dist/
+*.egg-info/
+
+# 忽略编辑器文件
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Logs
-*.log
-
-# OS
+# 忽略系统文件
 .DS_Store
 Thumbs.db
-
-# Build artifacts
-*.spec
-*.pyz
-
-# PyInstaller
-BarcodeSystem
-BarcodeSystem.exe
-BarcodeSystem.app
-
-# Temporary files
-*.tmp
-*.bak
-*.backup
-
-# Docker
-.dockerignore

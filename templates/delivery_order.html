@@ -1,0 +1,147 @@
+{% extends 'base.html' %}
+
+{% block title %}出库单{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">出库单</h4>
+                    <p class="card-description">使用Excel生成产品销售发货单</p>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="orderSelect">选择订单</label>
+                                <select class="form-control" id="orderSelect">
+                                    <option value="">-- 选择订单 --</option>
+                                    {% for order in orders %}
+                                    <option value="{{ order.id }}">{{ order.work_tag }} - {{ order.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <button id="generateBtn" class="btn btn-primary">生成出库单</button>
+                        </div>
+                        <div class="col-md-6">
+                            <div id="orderInfo" class="order-info">
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">📋</div>
+                                    <p>请选择订单查看订单信息</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 加载订单信息
+    async function loadOrderInfo(orderId) {
+        if (!orderId) {
+            document.getElementById('orderInfo').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <p>请选择订单查看订单信息</p>
+                </div>
+            `;
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/orders/${orderId}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                const order = data.data;
+                document.getElementById('orderInfo').innerHTML = `
+                    <div class="card">
+                        <div class="card-header">
+                            <h5>订单信息</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <label>工程名称</label>
+                                    <input type="text" class="form-control" value="${order.work_tag}" disabled>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label>订单名称</label>
+                                    <input type="text" class="form-control" value="${order.name}" disabled>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label>产品名称</label>
+                                    <input type="text" class="form-control" value="${order.product}" disabled>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label>颜色</label>
+                                    <input type="text" class="form-control" value="${order.color || '-'}" disabled>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label>图号</label>
+                                    <input type="text" class="form-control" value="${order.drawing_no || '-'}" disabled>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label>数量</label>
+                                    <input type="text" class="form-control" value="${order.quantity}" disabled>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('加载订单信息失败:', error);
+            showAlert('加载订单信息失败', 'danger');
+        }
+    }
+    
+    // 生成出库单
+    document.getElementById('generateBtn').addEventListener('click', async function() {
+        const orderId = document.getElementById('orderSelect').value;
+        if (!orderId) {
+            showAlert('请选择订单', 'warning');
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/delivery-order/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    order_id: orderId
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                // 打开Excel文件
+                window.open(data.data.excel_url, '_blank');
+                showAlert('出库单生成成功', 'success');
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('生成出库单失败:', error);
+            showAlert('生成出库单失败', 'danger');
+        }
+    });
+    
+    // 订单选择事件
+    document.getElementById('orderSelect').addEventListener('change', function() {
+        loadOrderInfo(this.value);
+    });
+    
+    // 初始化
+    loadOrderInfo(document.getElementById('orderSelect').value);
+</script>
+{% endblock %}
