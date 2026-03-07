@@ -1,41 +1,239 @@
 {% extends 'base.html' %}
 
-{% block title %}出库单{% endblock %}
+{% block title %}出库单管理{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
     <div class="row">
         <div class="col-12">
             <div class="card">
-                <div class="card-header">
-                    <h4 class="card-title">出库单</h4>
-                    <p class="card-description">使用Excel生成产品销售发货单</p>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h4 class="card-title">出库单管理</h4>
+                        <p class="card-description">管理产品销售发货单</p>
+                    </div>
+                    <button id="createBtn" class="btn btn-primary" data-permission="delivery.create">
+                        <i class="fas fa-plus"></i> 新建出库单
+                    </button>
                 </div>
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="form-group">
-                                <label for="orderSelect">选择订单</label>
-                                <select class="form-control" id="orderSelect">
-                                    <option value="">-- 选择订单 --</option>
-                                    {% for order in orders %}
-                                    <option value="{{ order.id }}">{{ order.work_tag }} - {{ order.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <button id="generateBtn" class="btn btn-primary">生成出库单</button>
+                    <!-- 搜索栏 -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <input type="text" id="searchInput" class="form-control" placeholder="搜索出库单号、购货单位...">
                         </div>
-                        <div class="col-md-6">
-                            <div id="orderInfo" class="order-info">
-                                <div class="empty-state">
-                                    <div class="empty-state-icon">📋</div>
-                                    <p>请选择订单查看订单信息</p>
-                                </div>
-                            </div>
+                        <div class="col-md-2">
+                            <button id="searchBtn" class="btn btn-secondary">搜索</button>
+                        </div>
+                    </div>
+
+                    <!-- 出库单列表 -->
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="deliveryOrderTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;"></th>
+                                    <th>出库单号</th>
+                                    <th>购货单位</th>
+                                    <th>合同编号</th>
+                                    <th>项目名称</th>
+                                    <th>发货数量</th>
+                                    <th>收货人</th>
+                                    <th>状态</th>
+                                    <th>创建时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deliveryOrderList">
+                                <!-- 动态加载 -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 分页 -->
+                    <nav aria-label="Page navigation" class="mt-3">
+                        <ul class="pagination justify-content-center" id="pagination">
+                            <!-- 动态加载 -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 出库单模态框 -->
+<div class="modal" id="deliveryOrderModal">
+    <div class="modal-content" style="max-width: 1400px;">
+        <div class="modal-header">
+            <h5 id="deliveryOrderModalLabel">出库单</h5>
+            <button class="modal-close" onclick="closeDeliveryOrderModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="deliveryOrderForm">
+                <input type="hidden" id="deliveryOrderId">
+                
+                <!-- 表头信息 -->
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <h6 style="margin: 0 0 15px 0; color: #667eea; font-weight: 600; font-size: 14px;">基本信息</h6>
+                    
+                    <!-- 第一行：出库单号、购货单位 -->
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-bottom: 12px;">
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">出库单号</label>
+                            <input type="text" class="form-control" id="deliveryNo" readonly style="background: #f8f9fa; border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">购货单位 <span style="color: red;">*</span></label>
+                            <input type="text" class="form-control" id="customerName" required style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                    </div>
+                    
+                    <!-- 第二行：合同编号、项目名称、发货数量、发货面积 -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">合同编号</label>
+                            <input type="text" class="form-control" id="contractNo" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">项目名称</label>
+                            <input type="text" class="form-control" id="projectName" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">发货数量</label>
+                            <input type="number" class="form-control" id="deliveryQuantity" min="0" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">发货面积</label>
+                            <input type="number" class="form-control" id="deliveryArea" step="0.01" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                    </div>
+                    
+                    <!-- 第三行：送货地址、收货人、电话 -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">送货地址</label>
+                            <textarea class="form-control" id="deliveryAddress" rows="2" style="border: 1px solid #e0e0e0; resize: vertical; font-size: 13px; padding: 4px 8px;"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">收货人</label>
+                            <input type="text" class="form-control" id="receiverName" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">电话</label>
+                            <input type="text" class="form-control" id="receiverPhone" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                    </div>
+                    
+                    <!-- 第六行：承运人、车牌号、司机电话、状态 -->
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">承运人</label>
+                            <input type="text" class="form-control" id="carrierName" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">车牌号</label>
+                            <input type="text" class="form-control" id="plateNumber" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">司机电话</label>
+                            <input type="text" class="form-control" id="driverPhone" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" style="margin-bottom: 4px; font-weight: 500; font-size: 13px;">状态</label>
+                            <select class="form-control" id="status" style="border: 1px solid #e0e0e0; font-size: 13px; padding: 4px 8px;">
+                                <option value="draft">草稿</option>
+                                <option value="confirmed">已确认</option>
+                                <option value="shipped">已发货</option>
+                                <option value="completed">已完成</option>
+                            </select>
                         </div>
                     </div>
                 </div>
+                
+                <hr style="margin: 15px 0;">
+                
+                <!-- 明细信息 -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h6 style="margin: 0; color: #667eea; font-weight: 600;">出库明细</h6>
+                    <div>
+                        <button type="button" class="btn btn-info" id="selectOrderDetailBtn">
+                            <i class="fas fa-list"></i> 从订单选择
+                        </button>
+                    </div>
+                </div>
+                
+                <div style="overflow-x: auto;">
+                    <table class="table" id="detailTable" style="font-size: 12px;">
+                        <thead>
+                            <tr style="font-size: 12px;">
+                                <th style="width: 60px;">序号</th>
+                                <th style="width: 100px;">楼号</th>
+                                <th style="width: 120px;">图号</th>
+                                <th style="width: 150px;">品名</th>
+                                <th style="width: 80px;">宽</th>
+                                <th style="width: 80px;">板厚</th>
+                                <th style="width: 80px;">计量</th>
+                                <th style="width: 80px;">数量</th>
+                                <th style="width: 80px;">单件</th>
+                                <th style="width: 80px;">总量</th>
+                                <th style="width: 120px;">单件开槽(米)</th>
+                                <th style="width: 120px;">总开槽(米)</th>
+                                <th style="width: 80px;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detailList">
+                            <!-- 动态加载 -->
+                        </tbody>
+                    </table>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeDeliveryOrderModal()">取消</button>
+            <button class="btn btn-primary" id="saveBtn">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- 选择订单明细模态框 -->
+<div class="modal" id="selectOrderDetailModal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+            <h5 id="selectOrderDetailModalLabel">选择订单明细</h5>
+            <button class="modal-close" onclick="closeSelectOrderDetailModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">选择订单</label>
+                <select class="form-control" id="selectOrder">
+                    <option value="">-- 请选择订单 --</option>
+                </select>
             </div>
+            <div style="margin-top: 20px;">
+                <table class="table" id="orderDetailTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">
+                                <input type="checkbox" id="selectAllDetails">
+                            </th>
+                            <th>序号</th>
+                            <th>品名</th>
+                            <th>颜色</th>
+                            <th>板厚</th>
+                            <th>图号</th>
+                            <th>数量</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orderDetailList">
+                        <!-- 动态加载 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeSelectOrderDetailModal()">取消</button>
+            <button class="btn btn-primary" id="confirmSelectBtn">确认选择</button>
         </div>
     </div>
 </div>
@@ -43,105 +241,734 @@
 
 {% block extra_js %}
 <script>
-    // 加载订单信息
-    async function loadOrderInfo(orderId) {
-        if (!orderId) {
-            document.getElementById('orderInfo').innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📋</div>
-                    <p>请选择订单查看订单信息</p>
-                </div>
-            `;
-            return;
-        }
-        
+    let currentPage = 1;
+    let pageSize = 10;
+    let currentDeliveryOrderId = null;
+    let details = [];
+    let selectedOrderDetails = [];
+    let allOrders = [];
+
+    // 加载出库单列表
+    async function loadDeliveryOrders(page = 1) {
         try {
-            const response = await fetch(`/api/orders/${orderId}`);
+            const search = document.getElementById('searchInput').value;
+            const response = await fetch(`/api/delivery-orders?page=${page}&page_size=${pageSize}&search=${encodeURIComponent(search)}`);
             const data = await response.json();
             
             if (data.success) {
-                const order = data.data;
-                document.getElementById('orderInfo').innerHTML = `
-                    <div class="card">
-                        <div class="card-header">
-                            <h5>订单信息</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="form-row">
-                                <div class="form-group col-md-6">
-                                    <label>工程名称</label>
-                                    <input type="text" class="form-control" value="${order.work_tag}" disabled>
-                                </div>
-                                <div class="form-group col-md-6">
-                                    <label>订单名称</label>
-                                    <input type="text" class="form-control" value="${order.name}" disabled>
-                                </div>
-                                <div class="form-group col-md-6">
-                                    <label>产品名称</label>
-                                    <input type="text" class="form-control" value="${order.product}" disabled>
-                                </div>
-                                <div class="form-group col-md-6">
-                                    <label>颜色</label>
-                                    <input type="text" class="form-control" value="${order.color || '-'}" disabled>
-                                </div>
-                                <div class="form-group col-md-6">
-                                    <label>图号</label>
-                                    <input type="text" class="form-control" value="${order.drawing_no || '-'}" disabled>
-                                </div>
-                                <div class="form-group col-md-6">
-                                    <label>数量</label>
-                                    <input type="text" class="form-control" value="${order.quantity}" disabled>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
-        } catch (error) {
-            console.error('加载订单信息失败:', error);
-            showAlert('加载订单信息失败', 'danger');
-        }
-    }
-    
-    // 生成出库单
-    document.getElementById('generateBtn').addEventListener('click', async function() {
-        const orderId = document.getElementById('orderSelect').value;
-        if (!orderId) {
-            showAlert('请选择订单', 'warning');
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/api/delivery-order/generate`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    order_id: orderId
-                })
-            });
-            
-            const data = await response.json();
-            if (data.success) {
-                // 打开Excel文件
-                window.open(data.data.excel_url, '_blank');
-                showAlert('出库单生成成功', 'success');
+                renderDeliveryOrderList(data.data.items);
+                renderPagination(data.data.total, page);
             } else {
                 showAlert(data.message, 'danger');
             }
         } catch (error) {
-            console.error('生成出库单失败:', error);
-            showAlert('生成出库单失败', 'danger');
+            console.error('加载出库单列表失败:', error);
+            showAlert('加载出库单列表失败', 'danger');
+        }
+    }
+
+    // 渲染出库单列表
+    function renderDeliveryOrderList(items) {
+        const tbody = document.getElementById('deliveryOrderList');
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center">暂无数据</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = items.map(item => `
+            <tr class="delivery-order-row" data-id="${item.id}">
+                <td>
+                    <button class="btn btn-xs btn-outline-secondary expand-btn" onclick="toggleDeliveryOrderDetails(${item.id})">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </td>
+                <td>${item.delivery_no}</td>
+                <td>${item.customer_name}</td>
+                <td>${item.contract_no || '-'}</td>
+                <td>${item.project_name || '-'}</td>
+                <td>${item.delivery_quantity || 0}</td>
+                <td>${item.receiver_name || '-'}</td>
+                <td>
+                    <span class="badge badge-${getStatusBadgeClass(item.status)}">
+                        ${getStatusText(item.status)}
+                    </span>
+                </td>
+                <td>${formatDate(item.created_at)}</td>
+                <td>
+                    <button class="btn btn-sm btn-info" onclick="editDeliveryOrder(${item.id})" data-permission="delivery.edit">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteDeliveryOrder(${item.id})" data-permission="delivery.delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="exportDeliveryOrder(${item.id})"><i class="fas fa-file-excel"></i></button>
+                </td>
+            </tr>
+            <tr class="delivery-order-details-row" id="details-row-${item.id}" style="display: none;">
+                <td colspan="10">
+                    <div class="p-3 bg-light">
+                        <table class="table table-sm table-bordered">
+                            <thead>
+                                <tr>
+                                    <th>序号</th>
+                                    <th>楼号</th>
+                                    <th>图号</th>
+                                    <th>品名</th>
+                                    <th>宽</th>
+                                    <th>板厚</th>
+                                    <th>计量</th>
+                                    <th>数量</th>
+                                    <th>单件</th>
+                                    <th>总量</th>
+                                    <th>单件开槽(米)</th>
+                                    <th>总开槽(米)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="details-body-${item.id}">
+                                <tr><td colspan="12" class="text-center">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+        
+        // 应用权限控制
+        applyPermissionControl();
+    }
+
+    // 切换出库单明细展开/折叠
+    function toggleDeliveryOrderDetails(deliveryOrderId) {
+        const detailsRow = document.getElementById(`details-row-${deliveryOrderId}`);
+        const expandBtn = document.querySelector(`.delivery-order-row[data-id="${deliveryOrderId}"] .expand-btn`);
+        const detailsBody = document.getElementById(`details-body-${deliveryOrderId}`);
+        
+        if (detailsRow.style.display === 'none') {
+            // 展开
+            detailsRow.style.display = '';
+            expandBtn.innerHTML = '<i class="fas fa-minus"></i>';
+            
+            // 加载明细
+            loadDeliveryOrderDetails(deliveryOrderId, detailsBody);
+        } else {
+            // 折叠
+            detailsRow.style.display = 'none';
+            expandBtn.innerHTML = '<i class="fas fa-plus"></i>';
+        }
+    }
+
+    // 加载出库单明细
+    async function loadDeliveryOrderDetails(deliveryOrderId, detailsBody) {
+        try {
+            const response = await fetch(`/api/delivery-orders/${deliveryOrderId}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                const details = data.data.details || [];
+                renderDeliveryOrderDetails(details, detailsBody);
+            } else {
+                detailsBody.innerHTML = '<tr><td colspan="12" class="text-center text-danger">加载明细失败</td></tr>';
+            }
+        } catch (error) {
+            console.error('加载出库单明细失败:', error);
+            detailsBody.innerHTML = '<tr><td colspan="12" class="text-center text-danger">加载明细失败</td></tr>';
+        }
+    }
+
+    // 渲染出库单明细
+    function renderDeliveryOrderDetails(details, detailsBody) {
+        if (details.length === 0) {
+            detailsBody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">暂无明细</td></tr>';
+            return;
+        }
+        
+        detailsBody.innerHTML = details.map(detail => `
+            <tr>
+                <td>${detail.sequence_no || '-'}</td>
+                <td>${detail.building_no || '-'}</td>
+                <td>${detail.drawing_no || '-'}</td>
+                <td>${detail.product_name || '-'}</td>
+                <td>${detail.width || '-'}</td>
+                <td>${detail.thickness || '-'}</td>
+                <td>${detail.unit || '-'}</td>
+                <td>${detail.quantity || 0}</td>
+                <td>${detail.single_weight || '-'}</td>
+                <td>${detail.total_weight || '-'}</td>
+                <td>${detail.single_groove || '-'}</td>
+                <td>${detail.total_groove || '-'}</td>
+            </tr>
+        `).join('');
+    }
+
+    // 获取状态样式
+    function getStatusBadgeClass(status) {
+        const map = {
+            'draft': 'secondary',
+            'confirmed': 'info',
+            'shipped': 'warning',
+            'completed': 'success'
+        };
+        return map[status] || 'secondary';
+    }
+
+    // 获取状态文本
+    function getStatusText(status) {
+        const map = {
+            'draft': '草稿',
+            'confirmed': '已确认',
+            'shipped': '已发货',
+            'completed': '已完成'
+        };
+        return map[status] || status;
+    }
+
+    // 渲染分页
+    function renderPagination(total, currentPage) {
+        const totalPages = Math.ceil(total / pageSize);
+        const pagination = document.getElementById('pagination');
+        
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        
+        // 上一页
+        html += `
+            <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="loadDeliveryOrders(${currentPage - 1}); return false;">上一页</a>
+            </li>
+        `;
+        
+        // 页码
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                html += `
+                    <li class="page-item ${i === currentPage ? 'active' : ''}">
+                        <a class="page-link" href="#" onclick="loadDeliveryOrders(${i}); return false;">${i}</a>
+                    </li>
+                `;
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                html += '<li class="page-item disabled"><a class="page-link" href="#">...</a></li>';
+            }
+        }
+        
+        // 下一页
+        html += `
+            <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+                <a class="page-link" href="#" onclick="loadDeliveryOrders(${currentPage + 1}); return false;">下一页</a>
+            </li>
+        `;
+        
+        pagination.innerHTML = html;
+    }
+
+    // 新建出库单
+    document.getElementById('createBtn').addEventListener('click', async function() {
+        currentDeliveryOrderId = null;
+        details = [];
+        
+        // 清空表单
+        document.getElementById('deliveryOrderForm').reset();
+        document.getElementById('deliveryOrderId').value = '';
+        document.getElementById('status').value = 'draft';
+        
+        // 生成出库单号
+        let deliveryNo = '';
+        try {
+            const response = await fetch('/api/delivery-orders/generate-no');
+            const data = await response.json();
+            if (data.success) {
+                deliveryNo = data.data.delivery_no;
+            }
+        } catch (error) {
+            console.error('生成出库单号失败:', error);
+        }
+        
+        // 设置出库单号
+        if (deliveryNo) {
+            document.getElementById('deliveryNo').value = deliveryNo;
+        }
+        
+        renderDetails();
+        
+        document.getElementById('deliveryOrderModalLabel').textContent = '新建出库单';
+        // 打开自定义模态框
+        document.getElementById('deliveryOrderModal').classList.add('active');
+
+    });
+
+    // 编辑出库单
+    async function editDeliveryOrder(id) {
+        currentDeliveryOrderId = id;
+        
+        try {
+            const response = await fetch(`/api/delivery-orders/${id}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                const order = data.data.delivery_order;
+                details = data.data.details || [];
+                
+                // 填充表头
+                document.getElementById('deliveryOrderId').value = order.id;
+                document.getElementById('deliveryNo').value = order.delivery_no;
+                document.getElementById('customerName').value = order.customer_name;
+                document.getElementById('contractNo').value = order.contract_no || '';
+                document.getElementById('projectName').value = order.project_name || '';
+                document.getElementById('deliveryQuantity').value = order.delivery_quantity || '';
+                document.getElementById('deliveryAddress').value = order.delivery_address || '';
+                document.getElementById('deliveryArea').value = order.delivery_area || '';
+                document.getElementById('receiverName').value = order.receiver_name || '';
+                document.getElementById('receiverPhone').value = order.receiver_phone || '';
+                document.getElementById('carrierName').value = order.carrier_name || '';
+                document.getElementById('plateNumber').value = order.plate_number || '';
+                document.getElementById('driverPhone').value = order.driver_phone || '';
+                document.getElementById('status').value = order.status || 'draft';
+                
+                renderDetails();
+                
+                document.getElementById('deliveryOrderModalLabel').textContent = '编辑出库单';
+                // 打开自定义模态框
+                document.getElementById('deliveryOrderModal').classList.add('active');
+
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('加载出库单失败:', error);
+            showAlert('加载出库单失败', 'danger');
+        }
+    }
+
+    // 删除出库单
+    async function deleteDeliveryOrder(id) {
+        if (!confirm('确定要删除此出库单吗？')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/delivery-orders/${id}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert('删除成功', 'success');
+                loadDeliveryOrders(currentPage);
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('删除出库单失败:', error);
+            showAlert('删除出库单失败', 'danger');
+        }
+    }
+
+    // 保存出库单
+    document.getElementById('saveBtn').addEventListener('click', async function() {
+        // 验证必填项
+        const customerName = document.getElementById('customerName').value.trim();
+        if (!customerName) {
+            showAlert('请填写购货单位', 'warning');
+            return;
+        }
+        
+        const deliveryOrderData = {
+            delivery_no: document.getElementById('deliveryNo').value,
+            customer_name: customerName,
+            contract_no: document.getElementById('contractNo').value || null,
+            project_name: document.getElementById('projectName').value || null,
+            delivery_quantity: parseInt(document.getElementById('deliveryQuantity').value) || 0,
+            delivery_address: document.getElementById('deliveryAddress').value || null,
+            delivery_area: parseFloat(document.getElementById('deliveryArea').value) || null,
+            receiver_name: document.getElementById('receiverName').value || null,
+            receiver_phone: document.getElementById('receiverPhone').value || null,
+            carrier_name: document.getElementById('carrierName').value || null,
+            plate_number: document.getElementById('plateNumber').value || null,
+            driver_phone: document.getElementById('driverPhone').value || null,
+            status: document.getElementById('status').value,
+            details: details.map(d => ({
+                id: d.id,
+                sequence_no: d.sequence_no,
+                building_no: d.building_no,
+                drawing_no: d.drawing_no,
+                product_name: d.product_name,
+                width: d.width,
+                thickness: d.thickness,
+                unit: d.unit,
+                quantity: d.quantity,
+                single_weight: d.single_weight,
+                total_weight: d.total_weight,
+                single_groove: d.single_groove,
+                total_groove: d.total_groove,
+                order_detail_id: d.order_detail_id
+            }))
+        };
+        
+        try {
+            const url = currentDeliveryOrderId 
+                ? `/api/delivery-orders/${currentDeliveryOrderId}`
+                : '/api/delivery-orders';
+            const method = currentDeliveryOrderId ? 'PUT' : 'POST';
+            
+            const response = await fetch(url, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(deliveryOrderData)
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert('保存成功', 'success');
+                $('#deliveryOrderModal').modal('hide');
+                loadDeliveryOrders(currentPage);
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('保存出库单失败:', error);
+            showAlert('保存出库单失败', 'danger');
         }
     });
-    
-    // 订单选择事件
-    document.getElementById('orderSelect').addEventListener('change', function() {
-        loadOrderInfo(this.value);
+
+    // 渲染明细列表
+    function renderDetails() {
+        const tbody = document.getElementById('detailList');
+        if (details.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="13" class="text-center text-muted" style="font-size: 12px;">暂无明细，请点击"从订单选择"</td></tr>';
+            return;
+        }
+        
+        tbody.innerHTML = details.map((detail, index) => `
+            <tr data-index="${index}" style="font-size: 12px;">
+                <td>
+                    <input type="number" class="form-control form-control-sm" value="${detail.sequence_no || (index + 1)}" 
+                        onchange="updateDetail(${index}, 'sequence_no', this.value)" style="font-size: 12px; -moz-appearance: textfield; appearance: textfield; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <style>
+                    input[type=number]::-webkit-inner-spin-button, 
+                    input[type=number]::-webkit-outer-spin-button { 
+                        -webkit-appearance: none; 
+                        margin: 0; 
+                    }
+                </style>
+                <td>
+                    <input type="text" class="form-control form-control-sm" value="${detail.building_no || ''}" 
+                        onchange="updateDetail(${index}, 'building_no', this.value)" style="font-size: 12px; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" value="${detail.drawing_no || ''}" 
+                        onchange="updateDetail(${index}, 'drawing_no', this.value)" style="font-size: 12px; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" value="${detail.product_name || ''}" 
+                        onchange="updateDetail(${index}, 'product_name', this.value)" style="font-size: 12px; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" value="${detail.width || ''}" step="0.01"
+                        onchange="updateDetail(${index}, 'width', this.value)" style="font-size: 12px; -moz-appearance: textfield; appearance: textfield; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" value="${detail.thickness || ''}" 
+                        onchange="updateDetail(${index}, 'thickness', this.value)" style="font-size: 12px; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="text" class="form-control form-control-sm" value="${detail.unit || ''}" 
+                        onchange="updateDetail(${index}, 'unit', this.value)" style="font-size: 12px; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" value="${detail.quantity || 0}" 
+                        onchange="updateDetail(${index}, 'quantity', this.value); calculateTotal(${index})" style="font-size: 12px; -moz-appearance: textfield; appearance: textfield; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" value="${detail.single_weight || ''}" step="0.01"
+                        onchange="updateDetail(${index}, 'single_weight', this.value); calculateTotal(${index})" style="font-size: 12px; -moz-appearance: textfield; appearance: textfield; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" value="${detail.total_weight || ''}" step="0.01" readonly style="font-size: 12px; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" value="${detail.single_groove || ''}" step="0.01"
+                        onchange="updateDetail(${index}, 'single_groove', this.value); calculateTotalGroove(${index})" style="font-size: 12px; -moz-appearance: textfield; appearance: textfield; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <input type="number" class="form-control form-control-sm" value="${detail.total_groove || ''}" step="0.01" readonly style="font-size: 12px; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                </td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="removeDetail(${index})" style="font-size: 11px; padding: 2px 6px;">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // 更新明细字段
+    function updateDetail(index, field, value) {
+        if (details[index]) {
+            details[index][field] = value;
+        }
+    }
+
+    // 计算总量
+    function calculateTotal(index) {
+        if (details[index]) {
+            const quantity = parseFloat(details[index].quantity) || 0;
+            const singleWeight = parseFloat(details[index].single_weight) || 0;
+            details[index].total_weight = (quantity * singleWeight).toFixed(2);
+            renderDetails();
+        }
+    }
+
+    // 计算总开槽
+    function calculateTotalGroove(index) {
+        if (details[index]) {
+            const quantity = parseFloat(details[index].quantity) || 0;
+            const singleGroove = parseFloat(details[index].single_groove) || 0;
+            details[index].total_groove = (quantity * singleGroove).toFixed(2);
+            renderDetails();
+        }
+    }
+
+    // 添加明细功能已移除，所有明细通过"从订单选择"添加
+
+    // 删除明细
+    function removeDetail(index) {
+        details.splice(index, 1);
+        // 重新排序序号
+        details.forEach((d, i) => d.sequence_no = i + 1);
+        renderDetails();
+    }
+
+    // 加载订单列表（用于选择明细）
+    async function loadOrdersForSelect() {
+        try {
+            const select = document.getElementById('selectOrder');
+            select.innerHTML = '<option value="">加载中...</option>';
+            
+            const response = await fetch('/api/orders?page=1&page_size=1000');
+            const data = await response.json();
+            
+            if (data.success) {
+                // 检查数据结构，API 返回的是直接的订单数组
+                allOrders = data.data;
+                if (!Array.isArray(allOrders)) {
+                    allOrders = [];
+                }
+                
+                if (allOrders.length === 0) {
+                    select.innerHTML = '<option value="">暂无订单</option>';
+                } else {
+                    select.innerHTML = '<option value="">-- 请选择订单 --</option>' + 
+                        allOrders.map(order => `<option value="${order.id}">${order.work_tag} - ${order.name}</option>`).join('');
+                }
+            } else {
+                select.innerHTML = '<option value="">加载失败</option>';
+                showAlert('加载订单失败', 'danger');
+            }
+        } catch (error) {
+            console.error('加载订单列表失败:', error);
+            document.getElementById('selectOrder').innerHTML = '<option value="">加载失败</option>';
+            showAlert('加载订单失败', 'danger');
+        }
+    }
+
+    // 加载订单明细
+    async function loadOrderDetails(orderId) {
+        if (!orderId) {
+            document.getElementById('orderDetailList').innerHTML = '';
+            return;
+        }
+        
+        try {
+            const tbody = document.getElementById('orderDetailList');
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">加载中...</td></tr>';
+            
+            const response = await fetch(`/api/orders/${orderId}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                const orderDetails = data.data.details || [];
+                selectedOrderDetails = [];
+                
+                if (orderDetails.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">该订单暂无明细</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = orderDetails.map((detail, index) => `
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="detail-checkbox" data-index="${index}" 
+                                data-detail='${JSON.stringify(detail)}'>
+                        </td>
+                        <td>${detail.sequence_no}</td>
+                        <td>${detail.product_name || '-'}</td>
+                        <td>${detail.color || '-'}</td>
+                        <td>${detail.thickness || '-'}</td>
+                        <td>${detail.drawing_no || '-'}</td>
+                        <td>${detail.quantity}</td>
+                    </tr>
+                `).join('');
+                
+                // 绑定复选框事件
+                document.querySelectorAll('.detail-checkbox').forEach(cb => {
+                    cb.addEventListener('change', function() {
+                        const detail = JSON.parse(this.dataset.detail);
+                        if (this.checked) {
+                            // 确保不会重复添加
+                            if (!selectedOrderDetails.some(d => d.id === detail.id)) {
+                                selectedOrderDetails.push(detail);
+                            }
+                        } else {
+                            selectedOrderDetails = selectedOrderDetails.filter(d => d.id !== detail.id);
+                        }
+                    });
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">加载失败</td></tr>';
+                showAlert('加载订单明细失败', 'danger');
+            }
+        } catch (error) {
+            console.error('加载订单明细失败:', error);
+            document.getElementById('orderDetailList').innerHTML = '<tr><td colspan="7" class="text-center">加载失败</td></tr>';
+            showAlert('加载订单明细失败', 'danger');
+        }
+    }
+
+    // 打开选择订单明细模态框
+    document.getElementById('selectOrderDetailBtn').addEventListener('click', function() {
+        loadOrdersForSelect();
+        document.getElementById('orderDetailList').innerHTML = '';
+        document.getElementById('selectOrder').value = '';
+        selectedOrderDetails = [];
+        // 打开自定义模态框
+        document.getElementById('selectOrderDetailModal').classList.add('active');
+
     });
+
+    // 订单选择变化
+    document.getElementById('selectOrder').addEventListener('change', function() {
+        loadOrderDetails(this.value);
+    });
+
+    // 全选/取消全选
+    document.getElementById('selectAllDetails').addEventListener('change', function() {
+        const checkboxes = document.querySelectorAll('.detail-checkbox');
+        selectedOrderDetails = [];
+        checkboxes.forEach(cb => {
+            cb.checked = this.checked;
+            if (this.checked) {
+                selectedOrderDetails.push(JSON.parse(cb.dataset.detail));
+            }
+        });
+    });
+
+    // 确认选择订单明细
+    document.getElementById('confirmSelectBtn').addEventListener('click', function() {
+        if (selectedOrderDetails.length === 0) {
+            showAlert('请至少选择一条明细', 'warning');
+            return;
+        }
+        
+        // 将选中的订单明细添加到出库单明细
+        selectedOrderDetails.forEach((orderDetail, index) => {
+            details.push({
+                sequence_no: details.length + index + 1,
+                order_detail_id: orderDetail.id,
+                building_no: '',  // 订单明细没有楼号，留空
+                drawing_no: orderDetail.drawing_no || '',
+                product_name: orderDetail.product_name || '',
+                width: null,  // 订单明细没有宽，留空
+                thickness: orderDetail.thickness || '',
+                unit: '',  // 订单明细没有计量单位，留空
+                quantity: orderDetail.quantity || 0,
+                single_weight: null,  // 留空给用户填写
+                total_weight: null,
+                single_groove: null,  // 留空给用户填写
+                total_groove: null
+            });
+        });
+        
+        renderDetails();
+        closeSelectOrderDetailModal();
+        showAlert(`已添加 ${selectedOrderDetails.length} 条明细`, 'success');
+    });
+
+    // 导出出库单
+    async function exportDeliveryOrder(id) {
+        try {
+            const response = await fetch(`/api/delivery-orders/${id}/export`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                window.open(data.data.excel_url, '_blank');
+                showAlert('导出成功', 'success');
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('导出出库单失败:', error);
+            showAlert('导出出库单失败', 'danger');
+        }
+    }
+
+    // 搜索
+    document.getElementById('searchBtn').addEventListener('click', function() {
+        currentPage = 1;
+        loadDeliveryOrders(currentPage);
+    });
+
+    // 回车搜索
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            currentPage = 1;
+            loadDeliveryOrders(currentPage);
+        }
+    });
+
+    // 格式化日期
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        return date.toLocaleString('zh-CN');
+    }
+
+    // 关闭出库单模态框
+    function closeDeliveryOrderModal() {
+        document.getElementById('deliveryOrderModal').classList.remove('active');
+        currentDeliveryOrderId = null;
+    }
+
+    // 关闭选择订单明细模态框
+    function closeSelectOrderDetailModal() {
+        document.getElementById('selectOrderDetailModal').classList.remove('active');
+        selectedOrderDetails = [];
+    }
+
+    // 初始化 - 等待权限加载完成
+    function initPage() {
+        if (window.userPermissions && window.userPermissions.length > 0) {
+            console.log('权限已加载，初始化页面');
+            loadDeliveryOrders();
+        } else {
+            console.log('等待权限加载...');
+            setTimeout(initPage, 100);
+        }
+    }
     
-    // 初始化
-    loadOrderInfo(document.getElementById('orderSelect').value);
+    // 页面加载完成后初始化
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPage);
+    } else {
+        initPage();
+    }
 </script>
 {% endblock %}

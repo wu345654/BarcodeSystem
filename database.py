@@ -154,6 +154,53 @@ def init_database():
         )
     ''')
     
+    # 出库单表头
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delivery_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            delivery_no TEXT NOT NULL UNIQUE,
+            customer_name TEXT NOT NULL,
+            contract_no TEXT,
+            project_name TEXT,
+            delivery_quantity INTEGER DEFAULT 0,
+            delivery_address TEXT,
+            delivery_area REAL,
+            receiver_name TEXT,
+            receiver_phone TEXT,
+            carrier_name TEXT,
+            plate_number TEXT,
+            driver_phone TEXT,
+            status TEXT DEFAULT 'draft',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # 出库单明细表
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delivery_order_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            delivery_order_id INTEGER NOT NULL,
+            order_detail_id INTEGER,
+            sequence_no INTEGER NOT NULL,
+            building_no TEXT,
+            drawing_no TEXT,
+            product_name TEXT,
+            width REAL,
+            thickness TEXT,
+            unit TEXT,
+            quantity INTEGER DEFAULT 0,
+            single_weight REAL,
+            total_weight REAL,
+            single_groove REAL,
+            total_groove REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (delivery_order_id) REFERENCES delivery_orders(id) ON DELETE CASCADE,
+            FOREIGN KEY (order_detail_id) REFERENCES order_details(id) ON DELETE SET NULL
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
@@ -162,16 +209,14 @@ class OrderModel:
     """订单数据模型"""
     
     @staticmethod
-    def create(work_tag: str, name: str, product: str, 
-               color: str = None, drawing_no: str = None, 
-               quantity: int = 1) -> int:
+    def create(work_tag: str, name: str, product: str, quantity: int = 0) -> int:
         """创建订单"""
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO orders (work_tag, name, color, drawing_no, product, quantity)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (work_tag, name, color, drawing_no, product, quantity))
+            INSERT INTO orders (work_tag, name, product, quantity)
+            VALUES (?, ?, ?, ?)
+        ''', (work_tag, name, product, quantity))
         order_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -201,7 +246,7 @@ class OrderModel:
     @staticmethod
     def update(order_id: int, **kwargs) -> bool:
         """更新订单"""
-        allowed_fields = ['work_tag', 'name', 'color', 'drawing_no', 'product', 'quantity']
+        allowed_fields = ['work_tag', 'name', 'product', 'quantity']
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return False
@@ -239,10 +284,8 @@ class OrderModel:
         cursor.execute('''
             SELECT * FROM orders 
             WHERE work_tag LIKE ? OR name LIKE ? OR product LIKE ? 
-            OR drawing_no LIKE ? OR color LIKE ?
             ORDER BY created_at DESC
-        ''', (f'%{keyword}%', f'%{keyword}%', f'%{keyword}%', 
-              f'%{keyword}%', f'%{keyword}%'))
+        ''', (f'%{keyword}%', f'%{keyword}%', f'%{keyword}%'))
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
@@ -406,6 +449,17 @@ class BarcodeModel:
             'scanned': row['scanned'] or 0,
             'unscanned': (row['total'] or 0) - (row['scanned'] or 0)
         }
+    
+    @staticmethod
+    def delete_by_order(order_id: int) -> bool:
+        """删除订单的所有条码"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM barcodes WHERE order_id = ?', (order_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
 
 
 class ScanRecordModel:
@@ -836,6 +890,224 @@ class AuthModel:
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
+
+
+class DeliveryOrderModel:
+    """出库单表头数据模型"""
+    
+    @staticmethod
+    def create(delivery_no: str, customer_name: str, contract_no: str = None,
+               project_name: str = None, delivery_quantity: int = 0,
+               delivery_address: str = None, delivery_area: float = None,
+               receiver_name: str = None, receiver_phone: str = None,
+               carrier_name: str = None, plate_number: str = None,
+               driver_phone: str = None, status: str = 'draft') -> int:
+        """创建出库单"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO delivery_orders (delivery_no, customer_name, contract_no, project_name,
+                delivery_quantity, delivery_address, delivery_area, receiver_name,
+                receiver_phone, carrier_name, plate_number, driver_phone, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (delivery_no, customer_name, contract_no, project_name,
+              delivery_quantity, delivery_address, delivery_area, receiver_name,
+              receiver_phone, carrier_name, plate_number, driver_phone, status))
+        delivery_order_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return delivery_order_id
+    
+    @staticmethod
+    def get_by_id(delivery_order_id: int) -> Optional[Dict]:
+        """根据ID获取出库单"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM delivery_orders WHERE id = ?', (delivery_order_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_all(page: int = 1, page_size: int = 10) -> List[Dict]:
+        """获取所有出库单"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        offset = (page - 1) * page_size
+        cursor.execute('''
+            SELECT * FROM delivery_orders 
+            ORDER BY created_at DESC 
+            LIMIT ? OFFSET ?
+        ''', (page_size, offset))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    
+    @staticmethod
+    def get_count() -> int:
+        """获取出库单总数"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) as count FROM delivery_orders')
+        row = cursor.fetchone()
+        conn.close()
+        return row['count']
+    
+    @staticmethod
+    def update(delivery_order_id: int, **kwargs) -> bool:
+        """更新出库单"""
+        allowed_fields = ['customer_name', 'contract_no', 'project_name',
+                         'delivery_quantity', 'delivery_address', 'delivery_area',
+                         'receiver_name', 'receiver_phone', 'carrier_name',
+                         'plate_number', 'driver_phone', 'status']
+        
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not updates:
+            return False
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [delivery_order_id]
+        
+        sql = f"""UPDATE delivery_orders 
+            SET {set_clause}, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?"""
+        cursor.execute(sql, values)
+        
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def delete(delivery_order_id: int) -> bool:
+        """删除出库单"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM delivery_orders WHERE id = ?', (delivery_order_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def generate_delivery_no() -> str:
+        """生成出库单号"""
+        from datetime import datetime
+        date_str = datetime.now().strftime('%Y%m%d')
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) as count FROM delivery_orders 
+            WHERE delivery_no LIKE ?
+        ''', (f'CK{date_str}%',))
+        row = cursor.fetchone()
+        conn.close()
+        seq = row['count'] + 1
+        return f'CK{date_str}{seq:04d}'
+
+
+class DeliveryOrderDetailModel:
+    """出库单明细数据模型"""
+    
+    @staticmethod
+    def create(delivery_order_id: int, sequence_no: int, order_detail_id: int = None,
+               building_no: str = None, drawing_no: str = None, product_name: str = None,
+               width: float = None, thickness: str = None, unit: str = None,
+               quantity: int = 0, single_weight: float = None, total_weight: float = None,
+               single_groove: float = None, total_groove: float = None) -> int:
+        """创建出库单明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO delivery_order_details (delivery_order_id, order_detail_id, sequence_no,
+                building_no, drawing_no, product_name, width, thickness, unit, quantity,
+                single_weight, total_weight, single_groove, total_groove)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (delivery_order_id, order_detail_id, sequence_no, building_no, drawing_no,
+              product_name, width, thickness, unit, quantity, single_weight, total_weight,
+              single_groove, total_groove))
+        detail_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return detail_id
+    
+    @staticmethod
+    def get_by_id(detail_id: int) -> Optional[Dict]:
+        """根据ID获取出库单明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM delivery_order_details WHERE id = ?', (detail_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    
+    @staticmethod
+    def get_by_delivery_order(delivery_order_id: int) -> List[Dict]:
+        """根据出库单ID获取所有明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT d.*, od.color, od.thickness as order_thickness
+            FROM delivery_order_details d
+            LEFT JOIN order_details od ON d.order_detail_id = od.id
+            WHERE d.delivery_order_id = ?
+            ORDER BY d.sequence_no
+        ''', (delivery_order_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    
+    @staticmethod
+    def update(detail_id: int, **kwargs) -> bool:
+        """更新出库单明细"""
+        allowed_fields = ['sequence_no', 'building_no', 'drawing_no', 'product_name',
+                         'width', 'thickness', 'unit', 'quantity', 'single_weight',
+                         'total_weight', 'single_groove', 'total_groove']
+        
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not updates:
+            return False
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        set_clause = ', '.join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values()) + [detail_id]
+        
+        sql = f"""UPDATE delivery_order_details 
+            SET {set_clause}, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?"""
+        cursor.execute(sql, values)
+        
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def delete(detail_id: int) -> bool:
+        """删除出库单明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM delivery_order_details WHERE id = ?', (detail_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
+    
+    @staticmethod
+    def delete_by_delivery_order(delivery_order_id: int) -> bool:
+        """删除出库单的所有明细"""
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM delivery_order_details WHERE delivery_order_id = ?', (delivery_order_id,))
+        conn.commit()
+        affected = cursor.rowcount
+        conn.close()
+        return affected > 0
 
 
 # 初始化数据库

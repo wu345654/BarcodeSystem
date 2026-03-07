@@ -27,4 +27,4 @@ dist/
 
 # 忽略系统文件
 .DS_Store
-Thumbs.db
+Thumbs.dborder_system.db

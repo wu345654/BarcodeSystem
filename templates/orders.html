@@ -39,28 +39,13 @@
                         <input type="text" class="form-control" id="workTag" placeholder="例如：泗泾不锈钢" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">名称 <span style="color: red;">*</span></label>
+                        <label class="form-label">备注 <span style="color: red;">*</span></label>
                         <input type="text" class="form-control" id="name" placeholder="例如：第1-2批" required>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">颜色</label>
-                        <input type="text" class="form-control" id="color" placeholder="例如：香槟色">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">图号</label>
-                        <input type="text" class="form-control" id="drawingNo" placeholder="例如：西#-院墙吊底-36">
                     </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label">产品 <span style="color: red;">*</span></label>
                     <input type="text" class="form-control" id="product" placeholder="例如：西#-院墙吊底964+2861" required>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">数量 <span style="color: red;">*</span></label>
-                    <input type="number" class="form-control" id="quantity" min="1" value="1" required>
-                    <small style="color: #888;">将根据此数量生成对应数量的唯一条码</small>
                 </div>
                 
                 <!-- 订单明细部分 -->
@@ -74,13 +59,13 @@
                         <table class="table" id="detailsTable">
                             <thead>
                                 <tr>
-                                    <th style="width: 60px;">序号</th>
-                                    <th>品名</th>
-                                    <th>颜色</th>
-                                    <th>板厚</th>
-                                    <th>图号</th>
-                                    <th>数量</th>
-                                    <th style="width: 80px;">操作</th>
+                                    <th style="width: 60px;")">序号</th>
+                                    <th style="width: 120px;")">品名</th>
+                                    <th style="width: 100px;")">颜色</th>
+                                    <th style="width: 80px;")">板厚</th>
+                                    <th style="width: 140px;")">图号</th>
+                                    <th style="width: 80px;")">数量</th>
+                                    <th style="width: 80px;")">操作</th>
                                 </tr>
                             </thead>
                             <tbody id="detailsTableBody">
@@ -168,11 +153,9 @@ function renderOrders(orders) {
                     <th style="width: 40px;"></th>
                     <th>ID</th>
                     <th>工程名称</th>
-                    <th>名称</th>
                     <th>产品</th>
-                    <th>颜色</th>
-                    <th>图号</th>
                     <th>数量</th>
+                    <th>备注</th>
                     <th>扫描进度</th>
                     <th>创建时间</th>
                     <th>操作</th>
@@ -201,19 +184,17 @@ function renderOrders(orders) {
         
         // 生成展开/折叠按钮
         const expandBtn = hasDetails ? 
-            `<button class="btn btn-sm btn-link" onclick="toggleDetails(${order.id})" id="expandBtn_${order.id}" style="padding: 0; min-width: 20px;">▶</button>` : 
-            '<span style="color: #ccc;">•</span>';
+            `<button class="btn btn-sm" onclick="toggleDetails(${order.id})" id="expandBtn_${order.id}" style="width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 4px; background-color: #f8f9fa; border: 1px solid #e9ecef; color: #6c757d; font-size: 14px; font-weight: bold; transition: all 0.2s ease;">+</button>` : 
+            '<span style="color: #e9ecef; width: 28px; display: inline-block; text-align: center;">•</span>';
         
         html += `
             <tr class="order-row" data-order-id="${order.id}">
                 <td style="text-align: center;">${expandBtn}</td>
                 <td>${order.id}</td>
                 <td>${order.work_tag}</td>
-                <td>${order.name}</td>
                 <td>${order.product}</td>
-                <td>${order.color || '-'}</td>
-                <td>${order.drawing_no || '-'}</td>
-                <td>${order.quantity}</td>
+                <td>${order.quantity || 0}</td>
+                <td>${order.name}</td>
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span class="badge ${progress == 100 ? 'badge-success' : progress > 0 ? 'badge-warning' : 'badge-info'}">
@@ -237,7 +218,7 @@ function renderOrders(orders) {
         if (hasDetails) {
             html += `
                 <tr class="details-row" id="details_${order.id}" style="display: none;">
-                    <td colspan="11" style="padding: 0;">
+                    <td colspan="9" style="padding: 0;">
                         <div style="padding: 15px; background-color: #f9f9f9; border-left: 3px solid #667eea;">
                             <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #667eea;">订单明细</h4>
                             <table style="width: 100%; border-collapse: collapse;">
@@ -363,10 +344,7 @@ async function loadOrderForEdit(orderId) {
             document.getElementById('orderId').value = order.id;
             document.getElementById('workTag').value = order.work_tag;
             document.getElementById('name').value = order.name;
-            document.getElementById('color').value = order.color || '';
-            document.getElementById('drawingNo').value = order.drawing_no || '';
             document.getElementById('product').value = order.product;
-            document.getElementById('quantity').value = order.quantity;
             
             // 加载订单明细
             await loadOrderDetails(orderId);
@@ -406,13 +384,13 @@ function renderOrderDetails() {
     orderDetails.forEach((detail, index) => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td><input type="number" class="form-control" style="width: 60px;" value="${detail.sequence_no}" onchange="updateDetail(${index}, 'sequence_no', this.value)"></td>
-            <td><input type="text" class="form-control" value="${detail.product_name}" onchange="updateDetail(${index}, 'product_name', this.value)"></td>
-            <td><input type="text" class="form-control" value="${detail.color || ''}" onchange="updateDetail(${index}, 'color', this.value)"></td>
-            <td><input type="text" class="form-control" value="${detail.thickness || ''}" onchange="updateDetail(${index}, 'thickness', this.value)"></td>
-            <td><input type="text" class="form-control" value="${detail.drawing_no || ''}" onchange="updateDetail(${index}, 'drawing_no', this.value)"></td>
-            <td><input type="number" class="form-control" style="width: 80px;" value="${detail.quantity}" min="1" onchange="updateDetail(${index}, 'quantity', this.value)"></td>
-            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeDetail(${index})">删除</button></td>
+            <td><input type="number" class="form-control" style="width: 60px; padding: 8px;" value="${detail.sequence_no}" onchange="updateDetail(${index}, 'sequence_no', this.value)"></td>
+            <td><input type="text" class="form-control" style="width: 120px; padding: 8px;" value="${detail.product_name}" onchange="updateDetail(${index}, 'product_name', this.value)"></td>
+            <td><input type="text" class="form-control" style="width: 100px; padding: 8px;" value="${detail.color || ''}" onchange="updateDetail(${index}, 'color', this.value)"></td>
+            <td><input type="text" class="form-control" style="width: 80px; padding: 8px;" value="${detail.thickness || ''}" onchange="updateDetail(${index}, 'thickness', this.value)"></td>
+            <td><input type="text" class="form-control" style="width: 140px; padding: 8px;" value="${detail.drawing_no || ''}" onchange="updateDetail(${index}, 'drawing_no', this.value)"></td>
+            <td><input type="number" class="form-control" style="width: 80px; padding: 8px;" value="${detail.quantity}" min="1" onchange="updateDetail(${index}, 'quantity', this.value)"></td>
+            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeDetail(${index})")">删除</button></td>
         `;
         tbody.appendChild(row);
     });
@@ -461,10 +439,7 @@ async function saveOrder() {
     const orderData = {
         work_tag: document.getElementById('workTag').value,
         name: document.getElementById('name').value,
-        color: document.getElementById('color').value,
-        drawing_no: document.getElementById('drawingNo').value,
         product: document.getElementById('product').value,
-        quantity: parseInt(document.getElementById('quantity').value),
         details: orderDetails
     };
     
@@ -514,11 +489,13 @@ function toggleDetails(orderId) {
     if (detailsRow.style.display === 'none') {
         // 展开明细
         detailsRow.style.display = 'table-row';
-        expandBtn.textContent = '▼';
+        expandBtn.textContent = '-';
+        expandBtn.style.backgroundColor = '#e9ecef';
     } else {
         // 折叠明细
         detailsRow.style.display = 'none';
-        expandBtn.textContent = '▶';
+        expandBtn.textContent = '+';
+        expandBtn.style.backgroundColor = '#f8f9fa';
     }
 }
 

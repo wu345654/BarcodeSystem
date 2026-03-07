@@ -4,8 +4,9 @@ import os
 import time
 from datetime import datetime
 from database import (
-    init_database, OrderModel, OrderDetailModel, BarcodeModel, ScanRecordModel, LabelTemplateModel, 
-    UserModel, RoleModel, PermissionModel, UserRoleModel, RolePermissionModel, AuthModel, get_connection
+    init_database, OrderModel, OrderDetailModel, BarcodeModel, ScanRecordModel, LabelTemplateModel,
+    UserModel, RoleModel, PermissionModel, UserRoleModel, RolePermissionModel, AuthModel, get_connection,
+    DeliveryOrderModel, DeliveryOrderDetailModel
 )
 from barcode_generator import create_barcodes_for_order, generate_barcode_image
 from reportlab.lib.pagesizes import A4, landscape
@@ -308,18 +309,19 @@ def create_order():
             return jsonify({'success': False, 'message': f'{field} 为必填字段'}), 400
     
     try:
+        # 计算订单明细总数量
+        details = data.get('details', [])
+        total_quantity = sum(detail.get('quantity', 1) for detail in details)
+        
         # 创建订单
         order_id = OrderModel.create(
             work_tag=data['work_tag'],
             name=data['name'],
             product=data['product'],
-            color=data.get('color'),
-            drawing_no=data.get('drawing_no'),
-            quantity=data.get('quantity', 1)
+            quantity=total_quantity
         )
         
         # 创建订单明细
-        details = data.get('details', [])
         for detail in details:
             OrderDetailModel.create(
                 order_id=order_id,
@@ -332,8 +334,7 @@ def create_order():
             )
         
         # 生成条码
-        quantity = data.get('quantity', 1)
-        barcodes = create_barcodes_for_order(order_id, quantity)
+        barcodes = create_barcodes_for_order(order_id, details)
         
         return jsonify({
             'success': True,
@@ -369,8 +370,15 @@ def update_order(order_id):
             # 删除原有明细
             OrderDetailModel.delete_by_order(order_id)
             
+            # 计算订单明细总数量
+            details = data['details']
+            total_quantity = sum(detail.get('quantity', 1) for detail in details)
+            
+            # 更新订单主表数量
+            OrderModel.update(order_id, quantity=total_quantity)
+            
             # 创建新明细
-            for detail in data['details']:
+            for detail in details:
                 OrderDetailModel.create(
                     order_id=order_id,
                     sequence_no=detail.get('sequence_no', 0),
@@ -380,6 +388,12 @@ def update_order(order_id):
                     drawing_no=detail.get('drawing_no'),
                     quantity=detail.get('quantity', 1)
                 )
+            
+            # 删除原有条码
+            BarcodeModel.delete_by_order(order_id)
+            
+            # 重新生成条码
+            barcodes = create_barcodes_for_order(order_id, details)
         
         if success:
             return jsonify({'success': True, 'message': '订单更新成功'})
@@ -687,6 +701,10 @@ def generate_label_pdf():
         if not order:
             return jsonify({'success': False, 'message': '订单不存在'}), 404
         
+        # 获取订单明细
+        order_details = OrderDetailModel.get_by_order(order_id)
+        print(f"订单明细数量: {len(order_details)}")
+        
         barcodes = BarcodeModel.get_by_order(order_id)
         print(f"条码数量: {len(barcodes)}")
         if not barcodes:
@@ -708,6 +726,21 @@ def generate_label_pdf():
             try:
                 import json
                 template_json = json.loads(template)
+                
+                # 处理模板元素，为每个元素创建Jinja2模板
+                template_elements = []
+                if 'elements' in template_json:
+                    for element in template_json['elements']:
+                        element_copy = element.copy()
+                        # 为文本元素内容创建Jinja2模板
+                        if element_copy.get('type') == 'text' and element_copy.get('content'):
+                            # 替换简化的变量语法 {var} 为 Jinja2 语法 {{ var }}
+                            content = element_copy['content']
+                            import re
+                            # 匹配 {variable} 格式的变量
+                            content = re.sub(r'\{([^}]+)\}', r'{{ \1 }}', content)
+                            element_copy['content_template'] = Template(content)
+                        template_elements.append(element_copy)
                 
                 # 生成自定义模板的HTML
                 html_template = '''
@@ -742,7 +775,11 @@ def generate_label_pdf():
                         {% for element in template_elements %}
                             {% if element.type == 'text' %}
                                 <div style="position: absolute; left: {{ element.x }}px; top: {{ element.y }}px; width: {{ element.width }}px; height: {{ element.height }}px; font-size: 12px;">
-                                    {{ element.content|safe }}
+                                    {% if element.content_template %}
+                                        {{ element.content_template.render(order=order, order_cn=order_cn, order_details=order_details, order_details_cn=order_details_cn, first_detail=first_detail, first_detail_cn=first_detail_cn, barcode=barcode)|safe }}
+                                    {% else %}
+                                        {{ element.content|safe }}
+                                    {% endif %}
                                 </div>
                             {% elif element.type == 'barcode' %}
                                 <div style="position: absolute; left: {{ element.x }}px; top: {{ element.y }}px; width: {{ element.width }}px; height: {{ element.height }}px; text-align: center;">
@@ -760,25 +797,44 @@ def generate_label_pdf():
                 </html>
                 '''
                 
-                # 处理模板元素，替换变量
-                template_elements = []
-                if 'elements' in template_json:
-                    for element in template_json['elements']:
-                        element_copy = element.copy()
-                        if element_copy.get('type') == 'text' and element_copy.get('content'):
-                            # 使用Jinja2模板渲染内容
-                            content_template = Template(element_copy['content'])
-                            # 先渲染一个示例内容用于预览
-                            element_copy['content'] = content_template.render(
-                                order=order,
-                                barcode={'barcode': '{barcode}', 'sequence_no': '{sequence_no}'}
-                            )
-                        template_elements.append(element_copy)
+                # 处理订单数据，添加中文标签
+                order_cn = {
+                    'id': order.get('id', ''),
+                    '工程名称': order.get('work_tag', ''),
+                    '备注': order.get('name', ''),
+                    '产品': order.get('product', ''),
+                    '数量': order.get('quantity', 0),
+                    '创建时间': order.get('created_at', ''),
+                    '更新时间': order.get('updated_at', '')
+                }
+                
+                # 处理订单明细数据，添加中文标签
+                order_details_cn = []
+                for detail in order_details:
+                    detail_cn = {
+                        'id': detail.get('id', ''),
+                        '序号': detail.get('sequence_no', ''),
+                        '品名': detail.get('product_name', ''),
+                        '颜色': detail.get('color', ''),
+                        '板厚': detail.get('thickness', ''),
+                        '图号': detail.get('drawing_no', ''),
+                        '数量': detail.get('quantity', 0)
+                    }
+                    order_details_cn.append(detail_cn)
+                
+                # 添加订单明细的第一个元素，方便模板使用
+                first_detail = order_details[0] if order_details else {}
+                first_detail_cn = order_details_cn[0] if order_details_cn else {}
                 
                 # 渲染HTML
                 jinja_template = Template(html_template)
                 render_context = {
                     'order': order,
+                    'order_cn': order_cn,
+                    'order_details': order_details,
+                    'order_details_cn': order_details_cn,
+                    'first_detail': first_detail,
+                    'first_detail_cn': first_detail_cn,
                     'barcodes': [{
                         'barcode': barcode['barcode'],
                         'sequence_no': barcode['sequence_no'],
@@ -848,10 +904,42 @@ def generate_label_pdf():
                 </html>
                 '''
                 
+                # 处理订单数据，添加中文标签
+                order_cn = {
+                    'id': order.get('id', ''),
+                    '工程名称': order.get('work_tag', ''),
+                    '备注': order.get('name', ''),
+                    '产品': order.get('product', ''),
+                    '数量': order.get('quantity', 0),
+                    '创建时间': order.get('created_at', ''),
+                    '更新时间': order.get('updated_at', '')
+                }
+                
+                # 处理订单明细数据，添加中文标签
+                order_details_cn = []
+                for detail in order_details:
+                    detail_cn = {
+                        'id': detail.get('id', ''),
+                        '序号': detail.get('sequence_no', ''),
+                        '品名': detail.get('product_name', ''),
+                        '颜色': detail.get('color', ''),
+                        '板厚': detail.get('thickness', ''),
+                        '图号': detail.get('drawing_no', ''),
+                        '数量': detail.get('quantity', 0)
+                    }
+                    order_details_cn.append(detail_cn)
+                
+                # 添加订单明细的第一个元素，方便模板使用
+                first_detail = order_details[0] if order_details else {}
+                first_detail_cn = order_details_cn[0] if order_details_cn else {}
+                
                 # 渲染HTML
                 jinja_template = Template(html_template)
                 render_context = {
                     'order': order,
+                    'order_cn': order_cn,
+                    'order_details': order_details,
+                    'order_details_cn': order_details_cn,
                     'barcodes': [{
                         'barcode': barcode['barcode'],
                         'sequence_no': barcode['sequence_no'],
@@ -912,10 +1000,38 @@ def generate_label_pdf():
             </html>
             '''
             
+            # 处理订单数据，添加中文标签
+            order_cn = {
+                'id': order.get('id', ''),
+                '工程名称': order.get('work_tag', ''),
+                '备注': order.get('name', ''),
+                '产品': order.get('product', ''),
+                '数量': order.get('quantity', 0),
+                '创建时间': order.get('created_at', ''),
+                '更新时间': order.get('updated_at', '')
+            }
+            
+            # 处理订单明细数据，添加中文标签
+            order_details_cn = []
+            for detail in order_details:
+                detail_cn = {
+                    'id': detail.get('id', ''),
+                    '序号': detail.get('sequence_no', ''),
+                    '品名': detail.get('product_name', ''),
+                    '颜色': detail.get('color', ''),
+                    '板厚': detail.get('thickness', ''),
+                    '图号': detail.get('drawing_no', ''),
+                    '数量': detail.get('quantity', 0)
+                }
+                order_details_cn.append(detail_cn)
+            
             # 渲染HTML
             jinja_template = Template(html_template)
             render_context = {
                 'order': order,
+                'order_cn': order_cn,
+                'order_details': order_details,
+                'order_details_cn': order_details_cn,
                 'barcodes': [{
                     'barcode': barcode['barcode'],
                     'sequence_no': barcode['sequence_no'],
@@ -987,21 +1103,22 @@ def generate_delivery_order():
         ws = wb.active
         ws.title = '产品销售发货单'
         
-        # 设置列宽
-        ws.column_dimensions['A'].width = 8
-        ws.column_dimensions['B'].width = 12
-        ws.column_dimensions['C'].width = 18
-        ws.column_dimensions['D'].width = 8
-        ws.column_dimensions['E'].width = 8
-        ws.column_dimensions['F'].width = 8
-        ws.column_dimensions['G'].width = 8
-        ws.column_dimensions['H'].width = 8
-        ws.column_dimensions['I'].width = 8
-        ws.column_dimensions['J'].width = 8
-        ws.column_dimensions['K'].width = 10
+        # 设置列宽，与出库单明细保持一致
+        ws.column_dimensions['A'].width = 8  # 序号
+        ws.column_dimensions['B'].width = 10  # 楼号
+        ws.column_dimensions['C'].width = 12  # 图号
+        ws.column_dimensions['D'].width = 15  # 品名
+        ws.column_dimensions['E'].width = 8  # 宽
+        ws.column_dimensions['F'].width = 8  # 板厚
+        ws.column_dimensions['G'].width = 8  # 计量
+        ws.column_dimensions['H'].width = 8  # 数量
+        ws.column_dimensions['I'].width = 8  # 单件
+        ws.column_dimensions['J'].width = 8  # 总量
+        ws.column_dimensions['K'].width = 12  # 单件开槽(米)
+        ws.column_dimensions['L'].width = 12  # 总开槽(米)
         
         # 标题
-        ws.merge_cells('A1:K1')
+        ws.merge_cells('A1:L1')
         ws['A1'] = '产品销售发货单'
         ws['A1'].font = openpyxl.styles.Font(bold=True, size=16)
         ws['A1'].alignment = openpyxl.styles.Alignment(horizontal='center', vertical='center')
@@ -1034,8 +1151,8 @@ def generate_delivery_order():
         ws['C6'] = '车牌:'
         ws['D6'] = ''
         
-        # 表头
-        headers = ['序号', '楼号', '图号', '产品', '宽', '板厚', '数量', '面积', '总量', '单件开捆', '总开捆(米)']
+        # 表头，与出库单明细保持一致
+        headers = ['序号', '楼号', '图号', '品名', '宽', '板厚', '计量', '数量', '单件', '总量', '单件开槽(米)', '总开槽(米)']
         for i, header in enumerate(headers, 1):
             cell = ws.cell(row=8, column=i)
             cell.value = header
@@ -1056,18 +1173,19 @@ def generate_delivery_order():
             ws.cell(row=i, column=4, value=order.get('product', '')).border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
             ws.cell(row=i, column=5, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
             ws.cell(row=i, column=6, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
-            ws.cell(row=i, column=7, value=1).border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
-            ws.cell(row=i, column=8, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
+            ws.cell(row=i, column=7, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
+            ws.cell(row=i, column=8, value=1).border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
             ws.cell(row=i, column=9, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
             ws.cell(row=i, column=10, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
             ws.cell(row=i, column=11, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
+            ws.cell(row=i, column=12, value='').border = openpyxl.styles.Border(left=openpyxl.styles.Side(style='thin'), right=openpyxl.styles.Side(style='thin'), top=openpyxl.styles.Side(style='thin'), bottom=openpyxl.styles.Side(style='thin'))
             
             total_quantity += 1
         
         # 合计行
         total_row = len(barcodes) + 9
         ws.cell(row=total_row, column=1, value='合计').font = openpyxl.styles.Font(bold=True)
-        ws.cell(row=total_row, column=7, value=total_quantity).font = openpyxl.styles.Font(bold=True)
+        ws.cell(row=total_row, column=8, value=total_quantity).font = openpyxl.styles.Font(bold=True)
         
         # 签字栏
         sign_row = total_row + 2
@@ -1081,7 +1199,7 @@ def generate_delivery_order():
         
         # 备注栏
         note_row = sign_row + 3
-        ws.merge_cells(f'A{note_row}:K{note_row}')
+        ws.merge_cells(f'A{note_row}:L{note_row}')
         ws.cell(row=note_row, column=1, value='备注:').font = openpyxl.styles.Font(bold=True)
         
         note_content = [
@@ -1091,7 +1209,7 @@ def generate_delivery_order():
         ]
         
         for i, note in enumerate(note_content, note_row+1):
-            ws.merge_cells(f'A{i}:K{i}')
+            ws.merge_cells(f'A{i}:L{i}')
             ws.cell(row=i, column=1, value=note)
         
         # 制单信息
@@ -1106,7 +1224,7 @@ def generate_delivery_order():
         
         # 页码
         page_row = info_row + 2
-        ws.merge_cells(f'A{page_row}:K{page_row}')
+        ws.merge_cells(f'A{page_row}:L{page_row}')
         ws.cell(row=page_row, column=1, value=f'第 1 页 共 1 页').alignment = openpyxl.styles.Alignment(horizontal='center')
         
         # 保存Excel文件
@@ -1124,6 +1242,363 @@ def generate_delivery_order():
     except Exception as e:
         print(f"生成出库单失败: {str(e)}")
         return jsonify({'success': False, 'message': f'生成出库单失败: {str(e)}'}), 500
+
+
+# ==================== API路由 - 出库单管理 ====================
+
+@app.route('/api/delivery-orders', methods=['GET'])
+@login_required
+@permission_required('delivery.view')
+def get_delivery_orders():
+    """获取出库单列表"""
+    try:
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 10))
+        search = request.args.get('search', '')
+
+        # 获取出库单列表
+        delivery_orders = DeliveryOrderModel.get_all(page, page_size)
+        total = DeliveryOrderModel.get_count()
+
+        # 如果有搜索条件，进行过滤
+        if search:
+            delivery_orders = [
+                order for order in delivery_orders
+                if search.lower() in (order.get('delivery_no') or '').lower()
+                or search.lower() in (order.get('customer_name') or '').lower()
+                or search.lower() in (order.get('contract_no') or '').lower()
+                or search.lower() in (order.get('project_name') or '').lower()
+            ]
+            total = len(delivery_orders)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'items': delivery_orders,
+                'total': total,
+                'page': page,
+                'page_size': page_size
+            }
+        })
+    except Exception as e:
+        print(f"获取出库单列表失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取出库单列表失败: {str(e)}'}), 500
+
+
+@app.route('/api/delivery-orders/generate-no', methods=['GET'])
+@login_required
+def generate_delivery_no():
+    """生成出库单号"""
+    try:
+        delivery_no = DeliveryOrderModel.generate_delivery_no()
+        return jsonify({
+            'success': True,
+            'data': {
+                'delivery_no': delivery_no
+            }
+        })
+    except Exception as e:
+        print(f"生成出库单号失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'生成出库单号失败: {str(e)}'}), 500
+
+
+@app.route('/api/delivery-orders/<int:delivery_order_id>', methods=['GET'])
+@login_required
+@permission_required('delivery.view')
+def get_delivery_order(delivery_order_id):
+    """获取出库单详情"""
+    try:
+        delivery_order = DeliveryOrderModel.get_by_id(delivery_order_id)
+        if not delivery_order:
+            return jsonify({'success': False, 'message': '出库单不存在'}), 404
+
+        # 获取出库单明细
+        details = DeliveryOrderDetailModel.get_by_delivery_order(delivery_order_id)
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'delivery_order': delivery_order,
+                'details': details
+            }
+        })
+    except Exception as e:
+        print(f"获取出库单详情失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'获取出库单详情失败: {str(e)}'}), 500
+
+
+@app.route('/api/delivery-orders', methods=['POST'])
+@login_required
+@permission_required('delivery.create')
+def create_delivery_order():
+    """创建出库单"""
+    data = request.get_json()
+
+    # 验证必填项
+    delivery_no = data.get('delivery_no')
+    customer_name = data.get('customer_name')
+
+    if not delivery_no or not customer_name:
+        return jsonify({'success': False, 'message': '出库单号和购货单位为必填项'}), 400
+
+    try:
+        # 创建出库单表头
+        delivery_order_id = DeliveryOrderModel.create(
+            delivery_no=delivery_no,
+            customer_name=customer_name,
+            contract_no=data.get('contract_no'),
+            project_name=data.get('project_name'),
+            delivery_quantity=data.get('delivery_quantity', 0),
+            delivery_address=data.get('delivery_address'),
+            delivery_area=data.get('delivery_area'),
+            receiver_name=data.get('receiver_name'),
+            receiver_phone=data.get('receiver_phone'),
+            carrier_name=data.get('carrier_name'),
+            plate_number=data.get('plate_number'),
+            driver_phone=data.get('driver_phone'),
+            status=data.get('status', 'draft')
+        )
+
+        # 创建出库单明细
+        details = data.get('details', [])
+        for detail in details:
+            DeliveryOrderDetailModel.create(
+                delivery_order_id=delivery_order_id,
+                sequence_no=detail.get('sequence_no', 1),
+                order_detail_id=detail.get('order_detail_id'),
+                building_no=detail.get('building_no'),
+                drawing_no=detail.get('drawing_no'),
+                product_name=detail.get('product_name'),
+                width=detail.get('width'),
+                thickness=detail.get('thickness'),
+                unit=detail.get('unit'),
+                quantity=detail.get('quantity', 0),
+                single_weight=detail.get('single_weight'),
+                total_weight=detail.get('total_weight'),
+                single_groove=detail.get('single_groove'),
+                total_groove=detail.get('total_groove')
+            )
+
+        return jsonify({
+            'success': True,
+            'message': '出库单创建成功',
+            'data': {
+                'delivery_order_id': delivery_order_id
+            }
+        })
+    except Exception as e:
+        print(f"创建出库单失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'创建出库单失败: {str(e)}'}), 500
+
+
+@app.route('/api/delivery-orders/<int:delivery_order_id>', methods=['PUT'])
+@login_required
+@permission_required('delivery.edit')
+def update_delivery_order(delivery_order_id):
+    """更新出库单"""
+    data = request.get_json()
+
+    # 检查出库单是否存在
+    delivery_order = DeliveryOrderModel.get_by_id(delivery_order_id)
+    if not delivery_order:
+        return jsonify({'success': False, 'message': '出库单不存在'}), 404
+
+    try:
+        # 更新表头
+        DeliveryOrderModel.update(
+            delivery_order_id,
+            customer_name=data.get('customer_name'),
+            contract_no=data.get('contract_no'),
+            project_name=data.get('project_name'),
+            delivery_quantity=data.get('delivery_quantity'),
+            delivery_address=data.get('delivery_address'),
+            delivery_area=data.get('delivery_area'),
+            receiver_name=data.get('receiver_name'),
+            receiver_phone=data.get('receiver_phone'),
+            carrier_name=data.get('carrier_name'),
+            plate_number=data.get('plate_number'),
+            driver_phone=data.get('driver_phone'),
+            status=data.get('status')
+        )
+
+        # 删除原有明细
+        DeliveryOrderDetailModel.delete_by_delivery_order(delivery_order_id)
+
+        # 重新创建明细
+        details = data.get('details', [])
+        for detail in details:
+            DeliveryOrderDetailModel.create(
+                delivery_order_id=delivery_order_id,
+                sequence_no=detail.get('sequence_no', 1),
+                order_detail_id=detail.get('order_detail_id'),
+                building_no=detail.get('building_no'),
+                drawing_no=detail.get('drawing_no'),
+                product_name=detail.get('product_name'),
+                width=detail.get('width'),
+                thickness=detail.get('thickness'),
+                unit=detail.get('unit'),
+                quantity=detail.get('quantity', 0),
+                single_weight=detail.get('single_weight'),
+                total_weight=detail.get('total_weight'),
+                single_groove=detail.get('single_groove'),
+                total_groove=detail.get('total_groove')
+            )
+
+        return jsonify({
+            'success': True,
+            'message': '出库单更新成功'
+        })
+    except Exception as e:
+        print(f"更新出库单失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'更新出库单失败: {str(e)}'}), 500
+
+
+@app.route('/api/delivery-orders/<int:delivery_order_id>', methods=['DELETE'])
+@login_required
+@permission_required('delivery.delete')
+def delete_delivery_order(delivery_order_id):
+    """删除出库单"""
+    try:
+        delivery_order = DeliveryOrderModel.get_by_id(delivery_order_id)
+        if not delivery_order:
+            return jsonify({'success': False, 'message': '出库单不存在'}), 404
+
+        DeliveryOrderModel.delete(delivery_order_id)
+
+        return jsonify({
+            'success': True,
+            'message': '出库单删除成功'
+        })
+    except Exception as e:
+        print(f"删除出库单失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'删除出库单失败: {str(e)}'}), 500
+
+
+@app.route('/api/delivery-orders/<int:delivery_order_id>/export', methods=['POST'])
+@login_required
+@permission_required('delivery.export')
+def export_delivery_order(delivery_order_id):
+    """导出出库单为Excel"""
+    try:
+        # 检查出库单是否存在
+        delivery_order = DeliveryOrderModel.get_by_id(delivery_order_id)
+        if not delivery_order:
+            return jsonify({'success': False, 'message': '出库单不存在'}), 404
+
+        # 获取出库单明细
+        details = DeliveryOrderDetailModel.get_by_delivery_order(delivery_order_id)
+
+        # 创建Excel文件
+        excel_dir = os.path.join(app.static_folder, 'delivery_orders')
+        os.makedirs(excel_dir, exist_ok=True)
+
+        excel_filename = f'delivery_order_{delivery_order_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        excel_path = os.path.join(excel_dir, excel_filename)
+
+        # 创建工作簿
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "出库单"
+
+        # 设置列宽
+        ws.column_dimensions['A'].width = 12
+        ws.column_dimensions['B'].width = 15
+        ws.column_dimensions['C'].width = 15
+        ws.column_dimensions['D'].width = 15
+        ws.column_dimensions['E'].width = 15
+        ws.column_dimensions['F'].width = 15
+        ws.column_dimensions['G'].width = 15
+        ws.column_dimensions['H'].width = 15
+
+        # 标题
+        ws.merge_cells('A1:H1')
+        ws['A1'] = '产品销售发货单'
+        ws['A1'].font = Font(size=16, bold=True)
+        ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
+
+        # 表头信息
+        ws['A3'] = '出库单号:'
+        ws['B3'] = delivery_order['delivery_no']
+        ws['D3'] = '购货单位:'
+        ws['E3'] = delivery_order['customer_name']
+
+        ws['A4'] = '合同编号:'
+        ws['B4'] = delivery_order.get('contract_no', '')
+        ws['D4'] = '项目名称:'
+        ws['E4'] = delivery_order.get('project_name', '')
+
+        ws['A5'] = '送货地址:'
+        ws['B5'] = delivery_order.get('delivery_address', '')
+        ws.merge_cells('B5:E5')
+
+        ws['A6'] = '收货人:'
+        ws['B6'] = delivery_order.get('receiver_name', '')
+        ws['D6'] = '电话:'
+        ws['E6'] = delivery_order.get('receiver_phone', '')
+
+        ws['A7'] = '承运人:'
+        ws['B7'] = delivery_order.get('carrier_name', '')
+        ws['D7'] = '车牌号:'
+        ws['E7'] = delivery_order.get('plate_number', '')
+        ws['F7'] = '司机电话:'
+        ws['G7'] = delivery_order.get('driver_phone', '')
+
+        # 明细表头
+        header_row = 9
+        headers = ['序号', '楼号', '图号', '品名', '宽', '板厚', '计量', '数量', '单件', '总量', '单件开槽(米)', '总开槽(米)']
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=header_row, column=col, value=header)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color='CCCCCC', end_color='CCCCCC', fill_type='solid')
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+
+        # 明细数据
+        for row_idx, detail in enumerate(details, header_row + 1):
+            ws.cell(row=row_idx, column=1, value=detail.get('sequence_no', ''))
+            ws.cell(row=row_idx, column=2, value=detail.get('building_no', ''))
+            ws.cell(row=row_idx, column=3, value=detail.get('drawing_no', ''))
+            ws.cell(row=row_idx, column=4, value=detail.get('product_name', ''))
+            ws.cell(row=row_idx, column=5, value=detail.get('width', ''))
+            ws.cell(row=row_idx, column=6, value=detail.get('thickness', ''))
+            ws.cell(row=row_idx, column=7, value=detail.get('unit', ''))
+            ws.cell(row=row_idx, column=8, value=detail.get('quantity', ''))
+            ws.cell(row=row_idx, column=9, value=detail.get('single_weight', ''))
+            ws.cell(row=row_idx, column=10, value=detail.get('total_weight', ''))
+            ws.cell(row=row_idx, column=11, value=detail.get('single_groove', ''))
+            ws.cell(row=row_idx, column=12, value=detail.get('total_groove', ''))
+
+            # 添加边框
+            for col in range(1, 13):
+                ws.cell(row=row_idx, column=col).border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+
+        # 保存文件
+        wb.save(excel_path)
+
+        excel_url = f'/static/delivery_orders/{excel_filename}'
+        return jsonify({
+            'success': True,
+            'message': '导出成功',
+            'data': {
+                'excel_url': excel_url
+            }
+        })
+    except Exception as e:
+        print(f"导出出库单失败: {str(e)}")
+        return jsonify({'success': False, 'message': f'导出出库单失败: {str(e)}'}), 500
 
 
 # ==================== API路由 - 标签模板 ====================
@@ -1711,6 +2186,10 @@ def generate_label_pdf_fallback():
         if not order:
             return jsonify({'success': False, 'message': '订单不存在'}), 404
         
+        # 获取订单明细
+        order_details = OrderDetailModel.get_by_order(order_id)
+        print(f"订单明细数量: {len(order_details)}")
+        
         barcodes = BarcodeModel.get_by_order(order_id)
         print(f"条码数量: {len(barcodes)}")
         if not barcodes:
@@ -1801,12 +2280,45 @@ def generate_label_pdf_fallback():
                             try:
                                 # 先进行简单的变量替换，确保即使Jinja2模板失败也能正常工作
                                 rendered_content = element_content
+                                
                                 # 替换order变量
+                                rendered_content = rendered_content.replace('{order.id}', str(order.get('id', '')))
                                 rendered_content = rendered_content.replace('{order.work_tag}', order.get('work_tag', ''))
                                 rendered_content = rendered_content.replace('{order.name}', order.get('name', ''))
                                 rendered_content = rendered_content.replace('{order.product}', order.get('product', ''))
-                                rendered_content = rendered_content.replace('{order.color}', order.get('color', ''))
-                                rendered_content = rendered_content.replace('{order.drawing_no}', order.get('drawing_no', ''))
+                                rendered_content = rendered_content.replace('{order.quantity}', str(order.get('quantity', 0)))
+                                rendered_content = rendered_content.replace('{order.created_at}', order.get('created_at', ''))
+                                rendered_content = rendered_content.replace('{order.updated_at}', order.get('updated_at', ''))
+                                
+                                # 替换中文标签变量
+                                rendered_content = rendered_content.replace('{order_cn.id}', str(order.get('id', '')))
+                                rendered_content = rendered_content.replace('{order_cn.工程名称}', order.get('work_tag', ''))
+                                rendered_content = rendered_content.replace('{order_cn.备注}', order.get('name', ''))
+                                rendered_content = rendered_content.replace('{order_cn.产品}', order.get('product', ''))
+                                rendered_content = rendered_content.replace('{order_cn.数量}', str(order.get('quantity', 0)))
+                                rendered_content = rendered_content.replace('{order_cn.创建时间}', order.get('created_at', ''))
+                                rendered_content = rendered_content.replace('{order_cn.更新时间}', order.get('updated_at', ''))
+                                
+                                # 替换订单明细变量
+                                if order_details and len(order_details) > 0:
+                                    first_detail = order_details[0]
+                                    rendered_content = rendered_content.replace('{order_details[0].id}', str(first_detail.get('id', '')))
+                                    rendered_content = rendered_content.replace('{order_details[0].sequence_no}', str(first_detail.get('sequence_no', '')))
+                                    rendered_content = rendered_content.replace('{order_details[0].product_name}', first_detail.get('product_name', ''))
+                                    rendered_content = rendered_content.replace('{order_details[0].color}', first_detail.get('color', ''))
+                                    rendered_content = rendered_content.replace('{order_details[0].thickness}', first_detail.get('thickness', ''))
+                                    rendered_content = rendered_content.replace('{order_details[0].drawing_no}', first_detail.get('drawing_no', ''))
+                                    rendered_content = rendered_content.replace('{order_details[0].quantity}', str(first_detail.get('quantity', 0)))
+                                    
+                                    # 替换订单明细中文标签变量
+                                    rendered_content = rendered_content.replace('{first_detail_cn.id}', str(first_detail.get('id', '')))
+                                    rendered_content = rendered_content.replace('{first_detail_cn.序号}', str(first_detail.get('sequence_no', '')))
+                                    rendered_content = rendered_content.replace('{first_detail_cn.品名}', first_detail.get('product_name', ''))
+                                    rendered_content = rendered_content.replace('{first_detail_cn.颜色}', first_detail.get('color', ''))
+                                    rendered_content = rendered_content.replace('{first_detail_cn.板厚}', first_detail.get('thickness', ''))
+                                    rendered_content = rendered_content.replace('{first_detail_cn.图号}', first_detail.get('drawing_no', ''))
+                                    rendered_content = rendered_content.replace('{first_detail_cn.数量}', str(first_detail.get('quantity', 0)))
+                                
                                 # 替换barcode变量
                                 rendered_content = rendered_content.replace('{barcode}', barcode.get('barcode', ''))
                                 rendered_content = rendered_content.replace('{sequence_no}', str(barcode.get('sequence_no', '')))
@@ -1909,4 +2421,4 @@ def generate_label_pdf_fallback():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=True, host='0.0.0.0', port=8888)

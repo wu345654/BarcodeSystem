@@ -60,31 +60,35 @@ def generate_barcode_image(barcode_number: str, filename: str = None) -> str:
     return f'/static/barcodes/{filename}.png'
 
 
-def create_barcodes_for_order(order_id: int, quantity: int) -> List[Dict]:
+def create_barcodes_for_order(order_id: int, order_details: List[Dict]) -> List[Dict]:
     """
-    为订单生成指定数量的条码
+    为订单生成条码，基于订单明细中的数量
     返回生成的条码列表
     """
     barcodes = []
+    sequence_no = 1
     
-    for i in range(1, quantity + 1):
-        # 生成条码编号
-        barcode_number = generate_barcode_number(order_id, i)
-        
-        # 生成条码图片
-        filename = f"order_{order_id}_seq_{i}"
-        image_path = generate_barcode_image(barcode_number, filename)
-        
-        # 保存到数据库
-        barcode_id = BarcodeModel.create(order_id, barcode_number, i)
-        
-        barcodes.append({
-            'id': barcode_id,
-            'order_id': order_id,
-            'barcode': barcode_number,
-            'sequence_no': i,
-            'image_path': image_path
-        })
+    for detail in order_details:
+        quantity = detail.get('quantity', 1)
+        for _ in range(quantity):
+            # 生成条码编号
+            barcode_number = generate_barcode_number(order_id, sequence_no)
+            
+            # 生成条码图片
+            filename = f"order_{order_id}_seq_{sequence_no}"
+            image_path = generate_barcode_image(barcode_number, filename)
+            
+            # 保存到数据库
+            barcode_id = BarcodeModel.create(order_id, barcode_number, sequence_no)
+            
+            barcodes.append({
+                'id': barcode_id,
+                'order_id': order_id,
+                'barcode': barcode_number,
+                'sequence_no': sequence_no,
+                'image_path': image_path
+            })
+            sequence_no += 1
     
     return barcodes
 

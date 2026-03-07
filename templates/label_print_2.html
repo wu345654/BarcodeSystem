@@ -244,6 +244,7 @@
 {% block extra_js %}
 <script>
     let currentOrder = null;
+    let currentOrderDetails = [];
     let designElements = [];
     let selectedElement = null;
     let currentOrderId = null;
@@ -515,8 +516,14 @@
                     <textarea class="form-control" id="content" rows="3" onchange="updateElementProperty('${elementId}', 'content', this.value)">${elementData.content}</textarea>
                 </div>
                 <div class="form-group">
-                    <label>提示</label>
-                    <small class="form-text text-muted">可使用变量: {order.work_tag}, {order.name}, {order.product}, {barcode}, {sequence_no}</small>
+                    <label>可使用变量</label>
+                    <small class="form-text text-muted">
+                        订单变量: {order.id}, {order.work_tag}, {order.name}, {order.product}, {order.quantity}, {order.created_at}, {order.updated_at}<br>
+                        中文标签: {order_cn.工程名称}, {order_cn.备注}, {order_cn.产品}, {order_cn.数量}, {order_cn.创建时间}, {order_cn.更新时间}<br>
+                        订单明细: {order_details[0].id}, {order_details[0].sequence_no}, {order_details[0].product_name}, {order_details[0].color}, {order_details[0].thickness}, {order_details[0].drawing_no}, {order_details[0].quantity}<br>
+                        订单明细中文: {first_detail_cn.序号}, {first_detail_cn.品名}, {first_detail_cn.颜色}, {first_detail_cn.板厚}, {first_detail_cn.图号}, {first_detail_cn.数量}<br>
+                        条码变量: {barcode}, {sequence_no}
+                    </small>
                 </div>
             `;
         }
@@ -609,6 +616,12 @@
             
             if (data.success) {
                 currentOrder = data.data.order;
+                // 获取订单明细
+                const detailsResponse = await fetch(`/api/orders/${orderId}/details`);
+                const detailsData = await detailsResponse.json();
+                if (detailsData.success) {
+                    currentOrderDetails = detailsData.data;
+                }
                 updatePreview();
             }
         } catch (error) {
@@ -644,9 +657,36 @@
                         if (element.type === 'text') {
                             // 渲染文本内容，替换变量
                             let content = element.content;
+                            // 替换英文订单变量
                             content = content.replace(/\{order\.(\w+)\}/g, (match, prop) => {
                                 return currentOrder[prop] || '';
                             });
+                            // 替换中文标签变量
+                            content = content.replace('{order_cn.工程名称}', currentOrder.work_tag || '');
+                            content = content.replace('{order_cn.备注}', currentOrder.name || '');
+                            content = content.replace('{order_cn.产品}', currentOrder.product || '');
+                            content = content.replace('{order_cn.数量}', currentOrder.quantity || 0);
+                            content = content.replace('{order_cn.创建时间}', currentOrder.created_at || '');
+                            content = content.replace('{order_cn.更新时间}', currentOrder.updated_at || '');
+                            // 替换订单明细变量
+                            if (currentOrderDetails && currentOrderDetails.length > 0) {
+                                const firstDetail = currentOrderDetails[0];
+                                content = content.replace('{order_details[0].id}', firstDetail.id || '');
+                                content = content.replace('{order_details[0].sequence_no}', firstDetail.sequence_no || '');
+                                content = content.replace('{order_details[0].product_name}', firstDetail.product_name || '');
+                                content = content.replace('{order_details[0].color}', firstDetail.color || '');
+                                content = content.replace('{order_details[0].thickness}', firstDetail.thickness || '');
+                                content = content.replace('{order_details[0].drawing_no}', firstDetail.drawing_no || '');
+                                content = content.replace('{order_details[0].quantity}', firstDetail.quantity || 0);
+                                // 替换订单明细中文标签变量
+                                content = content.replace('{first_detail_cn.序号}', firstDetail.sequence_no || '');
+                                content = content.replace('{first_detail_cn.品名}', firstDetail.product_name || '');
+                                content = content.replace('{first_detail_cn.颜色}', firstDetail.color || '');
+                                content = content.replace('{first_detail_cn.板厚}', firstDetail.thickness || '');
+                                content = content.replace('{first_detail_cn.图号}', firstDetail.drawing_no || '');
+                                content = content.replace('{first_detail_cn.数量}', firstDetail.quantity || 0);
+                            }
+                            // 替换条码变量
                             content = content.replace('{barcode}', barcode.barcode);
                             content = content.replace('{sequence_no}', barcode.sequence_no);
                             
