@@ -168,7 +168,7 @@ async function loadScanStats() {
                 let badgeClass = 'badge-info';
                 if (record.scan_result === 'SUCCESS') badgeClass = 'badge-success';
                 else if (record.scan_result === 'DUPLICATE') badgeClass = 'badge-warning';
-                else if (record.scan_result === 'NOT_FOUND') badgeClass = 'badge-danger';
+                else if (record.scan_result === 'FAILED') badgeClass = 'badge-danger';
                 
                 html += `
                     <tr>

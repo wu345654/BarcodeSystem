@@ -302,6 +302,7 @@
                         <i class="fas fa-trash"></i>
                     </button>
                     <button class="btn btn-sm btn-success" onclick="exportDeliveryOrder(${item.id})"><i class="fas fa-file-excel"></i></button>
+                    <button class="btn btn-sm btn-primary" onclick="printDeliveryOrder(${item.id})"><i class="fas fa-print"></i></button>
                 </td>
             </tr>
             <tr class="delivery-order-details-row" id="details-row-${item.id}" style="display: none;">
@@ -917,6 +918,26 @@
         } catch (error) {
             console.error('导出出库单失败:', error);
             showAlert('导出出库单失败', 'danger');
+        }
+    }
+
+    // 打印出库单
+    async function printDeliveryOrder(id) {
+        try {
+            const response = await fetch(`/api/delivery-orders/${id}/print`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                window.open(data.data.pdf_url, '_blank');
+                showAlert('生成PDF成功', 'success');
+            } else {
+                showAlert(data.message, 'danger');
+            }
+        } catch (error) {
+            console.error('生成PDF失败:', error);
+            showAlert('生成PDF失败', 'danger');
         }
     }
 

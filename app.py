@@ -1474,6 +1474,305 @@ def delete_delivery_order(delivery_order_id):
         return jsonify({'success': False, 'message': f'删除出库单失败: {str(e)}'}), 500
 
 
+@app.route('/api/delivery-orders/<int:delivery_order_id>/print', methods=['POST'])
+@login_required
+@permission_required('delivery.export')
+def print_delivery_order(delivery_order_id):
+    """打印出库单为PDF"""
+    try:
+        delivery_order = DeliveryOrderModel.get_by_id(delivery_order_id)
+        if not delivery_order:
+            return jsonify({'success': False, 'message': '出库单不存在'}), 404
+
+        details = DeliveryOrderDetailModel.get_by_delivery_order(delivery_order_id)
+
+        pdf_dir = os.path.join(app.static_folder, 'delivery_orders')
+        os.makedirs(pdf_dir, exist_ok=True)
+
+        pdf_filename = f'delivery_order_{delivery_order_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        pdf_path = os.path.join(pdf_dir, pdf_filename)
+
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.units import mm
+        from reportlab.lib.colors import Color
+
+        page_width, page_height = landscape(A4)
+        c = canvas.Canvas(pdf_path, pagesize=(page_width, page_height))
+
+        font_name = 'SimYou'
+        try:
+            c.setFont('SimYou', 16)
+        except:
+            try:
+                c.setFont('STSong-Light', 16)
+                font_name = 'STSong-Light'
+            except:
+                try:
+                    c.setFont('Heiti TC', 16)
+                    font_name = 'Heiti TC'
+                except:
+                    c.setFont('Helvetica', 16)
+                    font_name = 'Helvetica'
+
+        title_font_size = 16
+        header_font_size = 10
+        content_font_size = 10
+        small_font_size = 8
+
+        def set_font(size):
+            try:
+                c.setFont(font_name, size)
+            except:
+                try:
+                    c.setFont('STSong-Light', size)
+                except:
+                    try:
+                        c.setFont('Heiti TC', size)
+                    except:
+                        c.setFont('Helvetica', size)
+
+        # 重新实现PDF格式，与Excel完全一致，按照常见格式排列
+        y = page_height - 15 * mm
+
+        # 标题 - 与Excel一致
+        c.setFont(font_name, 16)
+        c.drawCentredString(page_width / 2, y, '产品销售发货单')
+        y -= 12 * mm
+
+        # 表头信息 - 与Excel一致的布局
+        set_font(10)
+        c.drawString(20 * mm, y, f'出库单号: {delivery_order.get("delivery_no", "")}')
+        c.drawString(100 * mm, y, f'购货单位: {delivery_order.get("customer_name", "")}')
+        y -= 7 * mm
+
+        c.drawString(20 * mm, y, f'合同编号: {delivery_order.get("contract_no", "")}')
+        c.drawString(100 * mm, y, f'项目名称: {delivery_order.get("project_name", "")}')
+        y -= 7 * mm
+
+        c.drawString(20 * mm, y, f'送货地址: {delivery_order.get("delivery_address", "")}')
+        y -= 7 * mm
+
+        c.drawString(20 * mm, y, f'收货人: {delivery_order.get("receiver_name", "")}')
+        c.drawString(100 * mm, y, f'电话: {delivery_order.get("receiver_phone", "")}')
+        y -= 7 * mm
+
+        c.drawString(20 * mm, y, f'承运人: {delivery_order.get("carrier_name", "")}')
+        c.drawString(100 * mm, y, f'车牌号: {delivery_order.get("plate_number", "")}')
+        c.drawString(180 * mm, y, f'司机电话: {delivery_order.get("driver_phone", "")}')
+        y -= 15 * mm
+
+        # 明细表头 - 与Excel一致的12列
+        col_widths = [18*mm, 18*mm, 18*mm, 22*mm, 14*mm, 14*mm, 14*mm, 14*mm, 14*mm, 14*mm, 16*mm, 16*mm]
+        headers = ['序号', '楼号', '图号', '品名', '宽', '板厚', '计量', '数量', '单件', '总量', '单件开槽(米)', '总开槽(米)']
+
+        header_y = y
+        set_font(10)
+        x = 10 * mm
+        for i, header in enumerate(headers):
+            c.drawString(x + 2, y, header)
+            x += col_widths[i]
+
+        # 绘制表头表格线
+        x = 10 * mm
+        c.line(10 * mm, header_y + 5 * mm, 10 * mm, y - 3 * mm)
+        for width in col_widths:
+            x += width
+            c.line(x, header_y + 5 * mm, x, y - 3 * mm)
+        c.line(page_width - 10 * mm, header_y + 5 * mm, page_width - 10 * mm, y - 3 * mm)
+        c.line(10 * mm, header_y + 5 * mm, page_width - 10 * mm, header_y + 5 * mm)
+        c.line(10 * mm, y - 3 * mm, page_width - 10 * mm, y - 3 * mm)
+        y -= 8 * mm
+
+        total_quantity = 0
+        total_total_weight = 0
+        total_total_groove = 0
+
+        # 明细数据
+        for i, detail in enumerate(details):
+            if y < 80 * mm:
+                c.showPage()
+                y = page_height - 20 * mm
+
+            x = 10 * mm
+            set_font(10)
+            c.drawString(x + 2, y, str(detail.get('sequence_no', '')))
+            x += col_widths[0]
+            c.drawString(x + 2, y, str(detail.get('building_no', '')))
+            x += col_widths[1]
+            c.drawString(x + 2, y, str(detail.get('drawing_no', '')))
+            x += col_widths[2]
+            c.drawString(x + 2, y, str(detail.get('product_name', '')))
+            x += col_widths[3]
+            c.drawString(x + 2, y, str(detail.get('width', '')))
+            x += col_widths[4]
+            c.drawString(x + 2, y, str(detail.get('thickness', '')))
+            x += col_widths[5]
+            c.drawString(x + 2, y, str(detail.get('unit', '')))
+            x += col_widths[6]
+            c.drawString(x + 2, y, str(detail.get('quantity', '')))
+            x += col_widths[7]
+            c.drawString(x + 2, y, str(detail.get('single_weight', '')))
+            x += col_widths[8]
+            c.drawString(x + 2, y, str(detail.get('total_weight', '')))
+            x += col_widths[9]
+            c.drawString(x + 2, y, str(detail.get('single_groove', '')))
+            x += col_widths[10]
+            c.drawString(x + 2, y, str(detail.get('total_groove', '')))
+
+            try:
+                total_quantity += float(detail.get('quantity', 0))
+            except:
+                pass
+            try:
+                total_total_weight += float(detail.get('total_weight', 0))
+            except:
+                pass
+            try:
+                total_total_groove += float(detail.get('total_groove', 0))
+            except:
+                pass
+
+            y -= 7 * mm
+
+        # 合计行 - 与明细表格合并显示
+        set_font(10)
+        c.drawString(15 * mm, y, '合计:')
+        x = 10 * mm + sum(col_widths[:7])
+        c.drawString(x + 2, y, str(total_quantity))
+        x += col_widths[7] + col_widths[8]
+        c.drawString(x + 2, y, str(total_total_weight))
+        x += col_widths[9] + col_widths[10]
+        c.drawString(x + 2, y, str(total_total_groove))
+        
+        # 绘制明细表格框线（包括合计行）
+        x = 10 * mm
+        c.line(10 * mm, header_y + 5 * mm, 10 * mm, y + 5 * mm)
+        for width in col_widths:
+            x += width
+            c.line(x, header_y + 5 * mm, x, y + 5 * mm)
+        c.line(page_width - 10 * mm, header_y + 5 * mm, page_width - 10 * mm, y + 5 * mm)
+        c.line(10 * mm, y + 5 * mm, page_width - 10 * mm, y + 5 * mm)
+        y -= 8 * mm
+
+        # 签字栏 - 与Excel一致，每个签字后面3列合并
+        set_font(10)
+        c.drawString(15 * mm, y, '收货人签字:')
+        c.drawString(85 * mm, y, '承运人签字:')
+        c.drawString(155 * mm, y, '发货人签字:')
+        y -= 6 * mm
+        c.drawString(15 * mm, y, '日期:')
+        c.drawString(85 * mm, y, '日期:')
+        c.drawString(155 * mm, y, '日期:')
+        
+        # 签字栏框线
+        c.line(10 * mm, y + 11 * mm, 10 * mm, y - 4 * mm)
+        c.line(55 * mm, y + 11 * mm, 55 * mm, y - 4 * mm)
+        c.line(125 * mm, y + 11 * mm, 125 * mm, y - 4 * mm)
+        c.line(195 * mm, y + 11 * mm, 195 * mm, y - 4 * mm)
+        c.line(page_width - 10 * mm, y + 11 * mm, page_width - 10 * mm, y - 4 * mm)
+        c.line(10 * mm, y + 11 * mm, page_width - 10 * mm, y + 11 * mm)
+        c.line(10 * mm, y + 4 * mm, page_width - 10 * mm, y + 4 * mm)
+        c.line(10 * mm, y - 4 * mm, page_width - 10 * mm, y - 4 * mm)
+        y -= 10 * mm
+
+        # 架子表格 - 与Excel一致，每个项目占2列
+        set_font(10)
+        c.drawString(20 * mm, y, '架子')
+        c.drawString(56 * mm, y, '数量')
+        c.drawString(92 * mm, y, '用户签字')
+        c.drawString(128 * mm, y, '经手司机')
+        c.drawString(164 * mm, y, '收回数量')
+        c.drawString(200 * mm, y, '库管签字')
+        y -= 6 * mm
+        
+        # 架子表格框线
+        c.line(10 * mm, y + 11 * mm, 10 * mm, y - 4 * mm)
+        c.line(38 * mm, y + 11 * mm, 38 * mm, y - 4 * mm)
+        c.line(74 * mm, y + 11 * mm, 74 * mm, y - 4 * mm)
+        c.line(110 * mm, y + 11 * mm, 110 * mm, y - 4 * mm)
+        c.line(146 * mm, y + 11 * mm, 146 * mm, y - 4 * mm)
+        c.line(182 * mm, y + 11 * mm, 182 * mm, y - 4 * mm)
+        c.line(218 * mm, y + 11 * mm, 218 * mm, y - 4 * mm)
+        c.line(page_width - 10 * mm, y + 11 * mm, page_width - 10 * mm, y - 4 * mm)
+        c.line(10 * mm, y + 11 * mm, page_width - 10 * mm, y + 11 * mm)
+        c.line(10 * mm, y - 4 * mm, page_width - 10 * mm, y - 4 * mm)
+        y -= 10 * mm
+
+        # 备注区域 - 与Excel一致，第1列合并显示"备注"，第2-12列合并显示内容
+        notes_start_y = y
+        
+        # 备注标签显示在左侧，内容显示在右侧
+        c.drawString(15 * mm, notes_start_y, '备注')
+        
+        # 备注内容 - 与Excel一致，每条显示为一行（第2-12列）
+        notes_y = y - 4 * mm
+        notes = [
+            '1、本发货单由经办人或收货人签字同具有法律效力。',
+            '2、货到工地，请轻拿轻放，在搬运过程中出现的损伤、划伤，我公司概不负责；如卸货前发现损坏、划伤，请当场提出并通知我公司，签字后视为我公司产品无质量问题。',
+            '3、收货单位当面清点货物规格、数量、颜色并签字确认。如有异议，自收货之日二日内书面形式通知我公司，否则以化验单签字为准。'
+        ]
+        set_font(10)
+        for note in notes:
+            c.drawString(32 * mm, notes_y, note)
+            notes_y -= 8 * mm
+        notes_bottom = notes_y + 4 * mm
+        
+        # 备注框线 - 与Excel一致，整体粗边框包裹
+        c.setStrokeColor(Color(0, 0, 0))
+        c.setLineWidth(1.5)  # 粗边框
+        c.rect(10 * mm, notes_bottom, 270 * mm, notes_start_y - notes_bottom + 3 * mm, fill=0, stroke=1)
+        c.setLineWidth(1)  # 恢复默认线宽
+        c.line(30 * mm, notes_start_y + 3 * mm, 30 * mm, notes_bottom)
+        c.line(10 * mm, notes_start_y - 1 * mm, 280 * mm, notes_start_y - 1 * mm)
+        c.line(10 * mm, notes_start_y - 9 * mm, 280 * mm, notes_start_y - 9 * mm)
+        
+        y = notes_bottom - 8 * mm
+
+        # 制单信息 - 与Excel一致
+        set_font(10)
+        c.drawString(15 * mm, y, '制单员:')
+        c.drawString(35 * mm, y, session.get("name", "未知"))
+        c.drawString(95 * mm, y, '审核员:')
+        c.drawString(175 * mm, y, '打印员:')
+        c.drawString(195 * mm, y, session.get("name", "未知"))
+        y -= 6 * mm
+        c.drawString(15 * mm, y, '制单日期:')
+        c.drawString(35 * mm, y, datetime.now().strftime("%Y-%m-%d"))
+        c.drawString(95 * mm, y, '审核日期:')
+        c.drawString(175 * mm, y, '打印日期:')
+        c.drawString(195 * mm, y, datetime.now().strftime("%Y-%m-%d"))
+        
+        # 制单信息框线
+        c.line(10 * mm, y + 10 * mm, 10 * mm, y - 4 * mm)
+        c.line(30 * mm, y + 10 * mm, 30 * mm, y - 4 * mm)
+        c.line(90 * mm, y + 10 * mm, 90 * mm, y - 4 * mm)
+        c.line(150 * mm, y + 10 * mm, 150 * mm, y - 4 * mm)
+        c.line(170 * mm, y + 10 * mm, 170 * mm, y - 4 * mm)
+        c.line(page_width - 10 * mm, y + 10 * mm, page_width - 10 * mm, y - 4 * mm)
+        c.line(10 * mm, y + 10 * mm, page_width - 10 * mm, y + 10 * mm)
+        c.line(10 * mm, y - 4 * mm, page_width - 10 * mm, y - 4 * mm)
+        y -= 8 * mm
+
+        # 页码 - 与Excel一致，合并3列显示在中间位置
+        c.drawCentredString(page_width / 2, y, '第 1 页 共 1 页')
+
+        c.save()
+
+        pdf_url = f'/static/delivery_orders/{pdf_filename}'
+        return jsonify({
+            'success': True,
+            'message': '生成成功',
+            'data': {
+                'pdf_url': pdf_url
+            }
+        })
+    except Exception as e:
+        print(f"生成PDF失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'生成PDF失败: {str(e)}'}), 500
+
+
 @app.route('/api/delivery-orders/<int:delivery_order_id>/export', methods=['POST'])
 @login_required
 @permission_required('delivery.export')
@@ -1504,17 +1803,13 @@ def export_delivery_order(delivery_order_id):
         ws.title = "出库单"
 
         # 设置列宽
-        ws.column_dimensions['A'].width = 12
-        ws.column_dimensions['B'].width = 15
-        ws.column_dimensions['C'].width = 15
-        ws.column_dimensions['D'].width = 15
-        ws.column_dimensions['E'].width = 15
-        ws.column_dimensions['F'].width = 15
-        ws.column_dimensions['G'].width = 15
-        ws.column_dimensions['H'].width = 15
+        column_widths = [12, 15, 15, 15, 10, 10, 10, 10, 10, 10, 12, 12]
+        columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L']
+        for i, (col, width) in enumerate(zip(columns, column_widths)):
+            ws.column_dimensions[col].width = width
 
         # 标题
-        ws.merge_cells('A1:H1')
+        ws.merge_cells('A1:L1')
         ws['A1'] = '产品销售发货单'
         ws['A1'].font = Font(size=16, bold=True)
         ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
@@ -1561,6 +1856,11 @@ def export_delivery_order(delivery_order_id):
                 bottom=Side(style='thin')
             )
 
+        # 计算合计
+        total_quantity = 0
+        total_total_weight = 0
+        total_total_groove = 0
+
         # 明细数据
         for row_idx, detail in enumerate(details, header_row + 1):
             ws.cell(row=row_idx, column=1, value=detail.get('sequence_no', ''))
@@ -1576,6 +1876,20 @@ def export_delivery_order(delivery_order_id):
             ws.cell(row=row_idx, column=11, value=detail.get('single_groove', ''))
             ws.cell(row=row_idx, column=12, value=detail.get('total_groove', ''))
 
+            # 累加合计
+            try:
+                total_quantity += float(detail.get('quantity', 0))
+            except:
+                pass
+            try:
+                total_total_weight += float(detail.get('total_weight', 0))
+            except:
+                pass
+            try:
+                total_total_groove += float(detail.get('total_groove', 0))
+            except:
+                pass
+
             # 添加边框
             for col in range(1, 13):
                 ws.cell(row=row_idx, column=col).border = Border(
@@ -1584,6 +1898,317 @@ def export_delivery_order(delivery_order_id):
                     top=Side(style='thin'),
                     bottom=Side(style='thin')
                 )
+
+        # 添加合计行
+        total_row = header_row
+        if details:
+            total_row = header_row + len(details) + 1
+            ws.cell(row=total_row, column=1, value='合计:')
+            ws.cell(row=total_row, column=1).font = Font(bold=True)
+            ws.cell(row=total_row, column=1).alignment = Alignment(horizontal='left', vertical='center')
+            ws.cell(row=total_row, column=8, value=total_quantity)
+            ws.cell(row=total_row, column=10, value=total_total_weight)
+            ws.cell(row=total_row, column=12, value=total_total_groove)
+
+            # 为合计行添加边框
+            for col in range(1, 13):
+                ws.cell(row=total_row, column=col).border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+
+        # 添加底部内容
+        current_row = total_row + 3
+        
+        # 1. 签字栏 - 标签后面的三列合并
+        # 收货人签字：1列，签名区域2-4列合并
+        ws.cell(row=current_row, column=1, value='收货人签字:')
+        ws.cell(row=current_row, column=2, value='')
+        ws.cell(row=current_row, column=3, value='')
+        ws.cell(row=current_row, column=4, value='')
+        ws.merge_cells(f'B{current_row}:D{current_row}')
+        
+        # 承运人签字：5列，签名区域6-8列合并
+        ws.cell(row=current_row, column=5, value='承运人签字:')
+        ws.cell(row=current_row, column=6, value='')
+        ws.cell(row=current_row, column=7, value='')
+        ws.cell(row=current_row, column=8, value='')
+        ws.merge_cells(f'F{current_row}:H{current_row}')
+        
+        # 发货人签字：9列，签名区域10-12列合并
+        ws.cell(row=current_row, column=9, value='发货人签字:')
+        ws.cell(row=current_row, column=10, value='')
+        ws.cell(row=current_row, column=11, value='')
+        ws.cell(row=current_row, column=12, value='')
+        ws.merge_cells(f'J{current_row}:L{current_row}')
+        
+        # 日期行 - 同样的方式
+        current_row += 1
+        ws.cell(row=current_row, column=1, value='日期:')
+        ws.cell(row=current_row, column=2, value='')
+        ws.cell(row=current_row, column=3, value='')
+        ws.cell(row=current_row, column=4, value='')
+        ws.merge_cells(f'B{current_row}:D{current_row}')
+        
+        ws.cell(row=current_row, column=5, value='日期:')
+        ws.cell(row=current_row, column=6, value='')
+        ws.cell(row=current_row, column=7, value='')
+        ws.cell(row=current_row, column=8, value='')
+        ws.merge_cells(f'F{current_row}:H{current_row}')
+        
+        ws.cell(row=current_row, column=9, value='日期:')
+        ws.cell(row=current_row, column=10, value='')
+        ws.cell(row=current_row, column=11, value='')
+        ws.cell(row=current_row, column=12, value='')
+        ws.merge_cells(f'J{current_row}:L{current_row}')
+        
+        # 为签字栏添加边框
+        for row in range(current_row - 1, current_row + 1):
+            for col in range(1, 13):
+                ws.cell(row=row, column=col).border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+        
+        # 2. 架子表格 - 6个项目各占2列，共12列与明细宽度一致
+        current_row += 2
+        
+        # 先设置值，再合并单元格（每个项目占2列）
+        # 架子：1-2列
+        ws.cell(row=current_row, column=1, value='架子')
+        ws.cell(row=current_row, column=2, value='')
+        # 数量：3-4列
+        ws.cell(row=current_row, column=3, value='数量')
+        ws.cell(row=current_row, column=4, value='')
+        # 用户签字：5-6列
+        ws.cell(row=current_row, column=5, value='用户签字')
+        ws.cell(row=current_row, column=6, value='')
+        # 经手司机：7-8列
+        ws.cell(row=current_row, column=7, value='经手司机')
+        ws.cell(row=current_row, column=8, value='')
+        # 收回数量：9-10列
+        ws.cell(row=current_row, column=9, value='收回数量')
+        ws.cell(row=current_row, column=10, value='')
+        # 库管签字：11-12列
+        ws.cell(row=current_row, column=11, value='库管签字')
+        ws.cell(row=current_row, column=12, value='')
+        
+        # 合并单元格
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        ws.merge_cells(f'C{current_row}:D{current_row}')
+        ws.merge_cells(f'E{current_row}:F{current_row}')
+        ws.merge_cells(f'G{current_row}:H{current_row}')
+        ws.merge_cells(f'I{current_row}:J{current_row}')
+        ws.merge_cells(f'K{current_row}:L{current_row}')
+        
+        # 设置表头样式
+        for col in range(1, 13):
+            cell = ws.cell(row=current_row, column=col)
+            cell.font = Font(bold=True)
+            cell.fill = PatternFill(start_color='CCCCCC', end_color='CCCCCC', fill_type='solid')
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+            cell.border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+        
+        # 添加表格行 - 每个项目占两列，与表头对应
+        current_row += 1
+        
+        # 先设置空值，再合并单元格
+        # 架子：1-2列
+        ws.cell(row=current_row, column=1, value='')
+        ws.cell(row=current_row, column=2, value='')
+        # 数量：3-4列
+        ws.cell(row=current_row, column=3, value='')
+        ws.cell(row=current_row, column=4, value='')
+        # 用户签字：5-6列
+        ws.cell(row=current_row, column=5, value='')
+        ws.cell(row=current_row, column=6, value='')
+        # 经手司机：7-8列
+        ws.cell(row=current_row, column=7, value='')
+        ws.cell(row=current_row, column=8, value='')
+        # 收回数量：9-10列
+        ws.cell(row=current_row, column=9, value='')
+        ws.cell(row=current_row, column=10, value='')
+        # 库管签字：11-12列
+        ws.cell(row=current_row, column=11, value='')
+        ws.cell(row=current_row, column=12, value='')
+        
+        # 合并单元格
+        ws.merge_cells(f'A{current_row}:B{current_row}')
+        ws.merge_cells(f'C{current_row}:D{current_row}')
+        ws.merge_cells(f'E{current_row}:F{current_row}')
+        ws.merge_cells(f'G{current_row}:H{current_row}')
+        ws.merge_cells(f'I{current_row}:J{current_row}')
+        ws.merge_cells(f'K{current_row}:L{current_row}')
+        
+        # 添加边框
+        for col in range(1, 13):
+            ws.cell(row=current_row, column=col).border = Border(
+                left=Side(style='thin'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+        
+        # 3. 备注 - 扩展到12列与明细宽度一致
+        current_row += 2
+        
+        # 备注部分：第1列合并显示"备注"，第2-12列合并显示内容
+        # 先设置值，再合并
+        notes = [
+            '1、本发货单由经办人或收货人签字同具有法律效力。',
+            '2、货到工地，请轻拿轻放，在搬运过程中出现的损伤、划伤，我公司概不负责；如卸货前发现损坏、划伤，请当场提出并通知我公司，签字后视为我公司产品无质量问题。',
+            '3、收货单位当面清点货物规格、数量、颜色并签字确认。如有异议，自收货之日二日内书面形式通知我公司，否则以化验单签字为准。'
+        ]
+        
+        # 设置值：第一行显示"备注"标签，后面两行为空
+        ws.cell(row=current_row, column=1, value='备注')
+        ws.cell(row=current_row, column=2, value=notes[0])
+        ws.cell(row=current_row + 1, column=1, value='')
+        ws.cell(row=current_row + 1, column=2, value=notes[1])
+        ws.cell(row=current_row + 2, column=1, value='')
+        ws.cell(row=current_row + 2, column=2, value=notes[2])
+        
+        # 增加行高，确保文字全部显示
+        ws.row_dimensions[current_row].height = 40
+        ws.row_dimensions[current_row + 1].height = 40
+        ws.row_dimensions[current_row + 2].height = 40
+        
+        # 合并单元格
+        # 第1列：3行合并为一个单元格
+        ws.merge_cells(f'A{current_row}:A{current_row + 2}')
+        # 第2-12列：3行各自合并
+        ws.merge_cells(f'B{current_row}:L{current_row}')
+        ws.merge_cells(f'B{current_row + 1}:L{current_row + 1}')
+        ws.merge_cells(f'B{current_row + 2}:L{current_row + 2}')
+        
+        # 设置样式 - 整体粗边框包裹
+        # 第1列：3行合并的单元格样式（外边框为粗）
+        cell_label = ws.cell(row=current_row, column=1)
+        cell_label.font = Font(bold=True)
+        cell_label.alignment = Alignment(horizontal='left', vertical='center')
+        # 第一行：上左粗，右细
+        cell_label.border = Border(
+            left=Side(style='medium'),
+            right=Side(style='thin'),
+            top=Side(style='medium'),
+            bottom=Side(style='thin')
+        )
+        
+        # 中间行：左右细边框
+        for i in range(1, 2):
+            cell_middle = ws.cell(row=current_row + i, column=1)
+            cell_middle.border = Border(
+                left=Side(style='medium'),
+                right=Side(style='thin'),
+                top=Side(style='thin'),
+                bottom=Side(style='thin')
+            )
+        
+        # 最后一行：下左粗，右细
+        cell_label_last = ws.cell(row=current_row + 2, column=1)
+        cell_label_last.border = Border(
+            left=Side(style='medium'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='medium')
+        )
+        
+        # 备注内容样式（绿色背景，第2-12列每列都用粗边框）
+        for row_idx in range(3):
+            for col_idx in range(2, 13):
+                cell = ws.cell(row=current_row + row_idx, column=col_idx)
+                cell.fill = PatternFill(start_color='E0F2E0', end_color='E0F2E0', fill_type='solid')
+                cell.alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+                
+                # 每一列都用粗边框
+                left_style = 'medium' if col_idx == 2 else 'thin'
+                right_style = 'medium' if col_idx == 12 else 'thin'
+                top_style = 'medium' if row_idx == 0 else 'thin'
+                bottom_style = 'medium' if row_idx == 2 else 'thin'
+                
+                cell.border = Border(
+                    left=Side(style=left_style),
+                    right=Side(style=right_style),
+                    top=Side(style=top_style),
+                    bottom=Side(style=bottom_style)
+                )
+        
+        # 4. 制单信息
+        current_row += 4
+        
+        # 第一行：制单员、审核员、打印员
+        ws.cell(row=current_row, column=1, value='制单员:')
+        ws.cell(row=current_row, column=2, value=session.get('name', '未知') or '未知')
+        ws.cell(row=current_row, column=3, value='')
+        ws.cell(row=current_row, column=4, value='')
+        ws.cell(row=current_row, column=5, value='审核员:')
+        ws.cell(row=current_row, column=6, value='')
+        ws.cell(row=current_row, column=7, value='')
+        ws.cell(row=current_row, column=8, value='')
+        ws.cell(row=current_row, column=9, value='打印员:')
+        ws.cell(row=current_row, column=10, value=session.get('name', '未知') or '未知')
+        ws.cell(row=current_row, column=11, value='')
+        ws.cell(row=current_row, column=12, value='')
+        
+        # 合并单元格 - 第一行（制单员后面3列：B-D）
+        ws.merge_cells(f'B{current_row}:D{current_row}')
+        # 合并单元格 - 第一行（审核员后面3列：F-H）
+        ws.merge_cells(f'F{current_row}:H{current_row}')
+        # 合并单元格 - 第一行（打印员后面3列：J-L）
+        ws.merge_cells(f'J{current_row}:L{current_row}')
+        
+        # 第二行：制单日期、审核日期、打印日期
+        current_row += 1
+        ws.cell(row=current_row, column=1, value='制单日期:')
+        ws.cell(row=current_row, column=2, value=datetime.now().strftime('%Y-%m-%d'))
+        ws.cell(row=current_row, column=3, value='')
+        ws.cell(row=current_row, column=4, value='')
+        ws.cell(row=current_row, column=5, value='审核日期:')
+        ws.cell(row=current_row, column=6, value='')
+        ws.cell(row=current_row, column=7, value='')
+        ws.cell(row=current_row, column=8, value='')
+        ws.cell(row=current_row, column=9, value='打印日期:')
+        ws.cell(row=current_row, column=10, value=datetime.now().strftime('%Y-%m-%d'))
+        ws.cell(row=current_row, column=11, value='')
+        ws.cell(row=current_row, column=12, value='')
+        
+        # 合并单元格 - 第二行（制单日期后面3列：B-D）
+        ws.merge_cells(f'B{current_row}:D{current_row}')
+        # 合并单元格 - 第二行（审核日期后面3列：F-H）
+        ws.merge_cells(f'F{current_row}:H{current_row}')
+        # 合并单元格 - 第二行（打印日期后面3列：J-L）
+        ws.merge_cells(f'J{current_row}:L{current_row}')
+        
+        # 为制单信息添加边框
+        for row in range(current_row - 1, current_row + 1):
+            for col in range(1, 13):
+                ws.cell(row=row, column=col).border = Border(
+                    left=Side(style='thin'),
+                    right=Side(style='thin'),
+                    top=Side(style='thin'),
+                    bottom=Side(style='thin')
+                )
+        
+        # 5. 页码 - 合并3列显示在中间位置（整页宽度12列的中间是5-7列）
+        current_row += 2
+        # 先设置值，再合并
+        ws.cell(row=current_row, column=5, value='第 1 页 共 1 页')
+        ws.cell(row=current_row, column=6, value='')
+        ws.cell(row=current_row, column=7, value='')
+        # 合并5-7列
+        ws.merge_cells(f'E{current_row}:G{current_row}')
+        # 设置样式（不显示边框）- 从合并后的左上角单元格设置
+        cell = ws.cell(row=current_row, column=5)
+        cell.alignment = Alignment(horizontal='center', vertical='center')
 
         # 保存文件
         wb.save(excel_path)
