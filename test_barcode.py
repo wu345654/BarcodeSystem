@@ -44,6 +44,6 @@ print("=" * 60)
 
 print("Access URL examples:")
 for barcode in barcodes:
-    print(f"http://127.0.0.1:8080{barcode['image_path']}")
+    print(f"http://127.0.0.1:8888{barcode['image_path']}")
 
 print("\nTest completed!")

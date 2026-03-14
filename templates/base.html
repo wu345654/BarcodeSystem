@@ -578,7 +578,6 @@
                     <li><a href="/orders" class="{% if request.path == '/orders' %}active{% endif %}">订单管理</a></li>
                     <li><a href="/scan" class="{% if request.path == '/scan' %}active{% endif %}">条码扫描</a></li>
                     <li><a href="/scan-records" class="{% if request.path == '/scan-records' %}active{% endif %}">扫描记录</a></li>
-                    <li><a href="/label-print" class="{% if request.path == '/label-print' %}active{% endif %}">标签打印</a></li>
                     <li><a href="/delivery-order" class="{% if request.path == '/delivery-order' %}active{% endif %}">出库单</a></li>
                     <li><a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}">统计报表</a></li>
                     <li class="dropdown" style="position: relative;">
@@ -763,7 +762,6 @@
                     '/orders': 'order.view',
                     '/scan': 'scan.scan',
                     '/scan-records': 'scan.view',
-                    '/label-print': 'label.print',
                     '/delivery-order': 'delivery.view',
                     '/reports': 'report.view',
                     '/user-management': 'user.manage',

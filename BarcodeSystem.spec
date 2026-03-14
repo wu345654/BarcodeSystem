@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['start.py'],
+    ['/Users/wuxing/Downloads/TRAE/BarcodeSystem/app.py'],
     pathex=[],
     binaries=[],
-    datas=[('templates', 'templates'), ('static', 'static')],
+    datas=[('/Users/wuxing/Downloads/TRAE/BarcodeSystem/templates', 'templates'), ('/Users/wuxing/Downloads/TRAE/BarcodeSystem/static', 'static')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icon.ico'],
+    icon=['/Users/wuxing/Downloads/TRAE/BarcodeSystem/icon.ico'],
 )

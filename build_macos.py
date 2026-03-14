@@ -149,7 +149,7 @@ if [ ! -f "$SCRIPT_DIR/order_system.db" ]; then
 fi
 
 echo "Starting Barcode System..."
-echo "System running at http://localhost:5001"
+echo "System running at http://localhost:8888"
 echo "Press Ctrl+C to stop service"
 echo "===================================="
 
@@ -209,7 +209,7 @@ echo "DMG installer created: $DMG_NAME.dmg"
         print("\nUsage:")
         print(f"1. Enter dist/macos/BarcodeSystem directory: cd {macos_dist_dir}")
         print("2. Run script: ./run_barcode_system.sh")
-        print("3. Access in browser: http://localhost:5001")
+        print("3. Access in browser: http://localhost:8888")
         print("\nCreate DMG installer:")
         print("  ./create_dmg.sh")
     else:

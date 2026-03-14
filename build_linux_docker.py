@@ -151,7 +151,7 @@ if [ ! -f "$SCRIPT_DIR/order_system.db" ]; then
 fi
 
 echo "正在启动条码系统..."
-echo "系统将在 http://localhost:5001 上运行"
+echo "系统将在 http://localhost:8888 上运行"
 echo "按 Ctrl+C 停止服务"
 echo "===================================="
 
@@ -172,7 +172,7 @@ cd "$SCRIPT_DIR"
         print(f"1. 将 dist 目录复制到 Linux 服务器")
         print("2. 进入 dist 目录: cd dist")
         print("3. 运行一键脚本: ./run_barcode_system.sh")
-        print("4. 在浏览器中访问: http://localhost:5001")
+        print("4. 在浏览器中访问: http://localhost:8888")
     else:
         print("\n打包失败！")
         sys.exit(1)

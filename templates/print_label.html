@@ -43,7 +43,8 @@
     border-collapse: collapse;
     height: 100%;
     font-family: Arial, sans-serif;
-    font-size: 9px;
+    font-size: 12px;
+    font-weight: bold;
 }
 
 .label-table td {
@@ -58,13 +59,15 @@
 }
 
 .label-table .barcode-cell img {
-    max-width: 95%;
-    height: 25mm;
+    max-width: 100%;
+    width: 100%;
+    max-height: 12mm;
+    object-fit: fill;
 }
 
 .label-table .barcode-text {
     margin-top: 2px;
-    font-size: 7px;
+    font-size: 8px;
 }
 
 /* 控制面板 */
@@ -161,11 +164,14 @@
 const orderId = {{ order_id }};
 let orderData = null;
 let barcodes = [];
+let orderDetails = [];
 
 // 加载订单和条码数据
 async function loadData() {
     try {
         console.log('loadData called with orderId:', orderId);
+        
+        // 加载订单条码数据（包含关联的订单明细）
         const response = await fetch(`/api/orders/${orderId}/barcodes`);
         const result = await response.json();
         
@@ -173,7 +179,10 @@ async function loadData() {
         if (result.success) {
             orderData = result.data.order;
             barcodes = result.data.barcodes;
+            orderDetails = result.data.details || [];
             console.log('Loaded barcodes:', barcodes);
+            console.log('Loaded order details:', orderDetails);
+            
             renderOrderInfo();
             renderLabels();
         }
@@ -237,38 +246,44 @@ function renderLabels() {
     
     // 显示所有条码的预览
     barcodes.forEach(barcode => {
+        // 直接使用条码关联的订单明细
+        const detail = barcode.detail || {};
+        
+        console.log(`Barcode ID: ${barcode.id}, Detail:`, detail);
+        
         html += `
             <div class="label-container">
                 <table class="label-table">
                     <!-- 第一行：工程名称 -->
                     <tr>
-                        <td>工程名称</td>
-                        <td colspan="3">${orderData.work_tag || ''}</td>
+                        <td style="width: 55px;">工程名称</td>
+                        <td colspan="5">${orderData.work_tag || ''}</td>
                     </tr>
                     <!-- 第二行：序号和颜色 -->
                     <tr>
                         <td>序号</td>
-                        <td>${barcode.sequence_no.toString()}</td>
-                        <td>颜色</td>
-                        <td>${orderData.color || '-'}</td>
+                        <td>${detail.sequence_no || barcode.sequence_no.toString()}</td>
+                        <td style="width: 30px;">颜色</td>
+                        <td style="width: 50px;">${detail.color || orderData.color || '-'}</td>
+                        <td style="width: 30px;">板厚</td>
+                        <td style="width: 50px;">${detail.thickness || '-'}</td>
                     </tr>
                     <!-- 第三行：数量和图号 -->
                     <tr>
                         <td>数量</td>
-                        <td>1/1</td>
+                        <td>${barcode.barcode_sequence || detail.quantity || orderData.quantity || '-'}</td>
                         <td>图号</td>
-                        <td>${orderData.drawing_no || '-'}</td>
+                        <td colspan="3">${detail.drawing_no || orderData.drawing_no || '-'}</td>
                     </tr>
-                    <!-- 第四行：产品编码 -->
+                    <!-- 第四行：品名 -->
                     <tr>
-                        <td>产品编码</td>
-                        <td colspan="3">${orderData.product || '-'}</td>
+                        <td>品名</td>
+                        <td colspan="5">${detail.product_name || orderData.product || '-'}</td>
                     </tr>
                     <!-- 第五行：条码 -->
-                    <tr>
-                        <td colspan="4" class="barcode-cell">
+                    <tr height="10px;">
+                        <td colspan="6" class="barcode-cell">
                             <img src="${barcode.image_path}" alt="条码">
-                            <div class="barcode-text">NO.${barcode.id}</div>
                         </td>
                     </tr>
                 </table>
@@ -288,12 +303,14 @@ function printLabels() {
         return;
     }
     
-    // 构建打印内容
-    let printContent = '<!DOCTYPE html><html><head><title>打印条码标签</title><style>body{font-family:Arial,sans-serif;margin:0;padding:20px;}.label{width:80mm;height:50mm;border:1px solid #000;padding:3mm;margin-bottom:10mm;page-break-after:always;font-size:9px;box-sizing:border-box;}.label table{width:100%;border-collapse:collapse;height:100%;}.label td{border:1px solid #000;padding:1px;}.label .barcode-cell{text-align:center;padding:2mm;}.label .barcode-cell img{max-width:95%;height:25mm;}.label .barcode-text{margin-top:2px;font-size:7px;}</style></head><body>';
+    // 构建打印内容 - 使用与预览完全相同的样式
+    let printContent = '<!DOCTYPE html><html><head><title>打印条码标签</title><style>@page {size: 80mm 50mm;margin: 0;} body{font-family:Arial,sans-serif;margin:0;padding:0;}.label-container{width:80mm;height:50mm;border:1px solid #000;padding:2mm;margin:0;font-size:10px;box-sizing:border-box;font-weight: bold;}.label-table{width:100%;border-collapse:collapse;height:100%;}.label-table td{border:1px solid #000;padding:1px;text-align:center;}.label-table .barcode-cell{text-align:center;padding:1mm;}.label-table .barcode-cell img{ max-width: 100%;width: 100%;max-height: 12mm;object-fit: fill;}.label-table .barcode-text{margin-top:1px;font-size:6px;}</style></head><body>';
     
     // 转义HTML特殊字符
     function escapeHtml(text) {
-        return text
+        // 确保输入是字符串
+        const str = String(text || '');
+        return str
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -302,19 +319,27 @@ function printLabels() {
     }
     
     // 添加每个标签
+    let totalLabels = 0;
     for (let i = 0; i < quantity; i++) {
-        barcodes.forEach(barcode => {
-            printContent += '<div class="label"><table>';
+        barcodes.forEach((barcode, index) => {
+            totalLabels++;
+            // 只在非最后一个标签后添加分页
+            const pageBreak = (index < barcodes.length - 1 || i < quantity - 1) ? 'page-break-after:always' : '';
+            
+            // 直接使用条码关联的订单明细
+            const detail = barcode.detail || {};
+          
+            printContent += `<div class="label-container" style="${pageBreak}"><table class="label-table">`;
             // 第一行：工程名称
-            printContent += '<tr><td>工程名称</td><td colspan="3">' + escapeHtml(orderData.work_tag || '') + '</td></tr>';
+            printContent += '<tr><td style="width: 50px;">工程名称</td><td colspan="5">' + escapeHtml(orderData.work_tag || '') + '</td></tr>';
             // 第二行：序号和颜色
-            printContent += '<tr><td>序号</td><td>' + escapeHtml(barcode.sequence_no.toString()) + '</td><td>颜色</td><td>' + escapeHtml(orderData.color || '-') + '</td></tr>';
+            printContent += '<tr><td>序号</td><td style="width: 30px">' + escapeHtml(detail.sequence_no || barcode.sequence_no || '') + '</td><td style="width: 30px;">颜色</td><td style="width: 50px;">' + escapeHtml(detail.color || orderData.color || '-') + '</td><td style="width: 30px;">板厚</td><td>' + escapeHtml(detail.thickness || '-') + '</td></tr>';
             // 第三行：数量和图号
-            printContent += '<tr><td>数量</td><td>1/1</td><td>图号</td><td>' + escapeHtml(orderData.drawing_no || '-') + '</td></tr>';
+            printContent += '<tr><td>数量</td><td>' + escapeHtml(barcode.barcode_sequence || detail.quantity || orderData.quantity || '') + '</td><td>图号</td><td colspan="3">' + escapeHtml(detail.drawing_no || orderData.drawing_no || '-') + '</td></tr>';
             // 第四行：产品编码
-            printContent += '<tr><td>产品编码</td><td colspan="3">' + escapeHtml(orderData.product || '-') + '</td></tr>';
+            printContent += '<tr><td>品名</td><td colspan="5">' + escapeHtml(detail.product_name || orderData.product || '-') + '</td></tr>';
             // 第五行：条码
-            printContent += '<tr><td colspan="4" class="barcode-cell"><img src="' + barcode.image_path + '"><div class="barcode-text">NO.' + barcode.id + '</div></td></tr>';
+            printContent += '<tr height="20px;"><td colspan="6" class="barcode-cell"><img src="' + barcode.image_path + '"></td></tr>';
             printContent += '</table></div>';
         });
     }

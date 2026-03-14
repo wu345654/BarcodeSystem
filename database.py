@@ -201,6 +201,12 @@ def init_database():
         )
     ''')
     
+    # 检查并添加barcodes表的order_detail_id字段
+    cursor.execute("PRAGMA table_info(barcodes)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'order_detail_id' not in columns:
+        cursor.execute('ALTER TABLE barcodes ADD COLUMN order_detail_id INTEGER REFERENCES order_details(id) ON DELETE SET NULL')
+    
     conn.commit()
     conn.close()
 
@@ -381,14 +387,14 @@ class BarcodeModel:
     """条码数据模型"""
     
     @staticmethod
-    def create(order_id: int, barcode: str, sequence_no: int) -> int:
+    def create(order_id: int, barcode: str, sequence_no: int, order_detail_id: int = None) -> int:
         """创建条码"""
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO barcodes (order_id, barcode, sequence_no)
-            VALUES (?, ?, ?)
-        ''', (order_id, barcode, sequence_no))
+            INSERT INTO barcodes (order_id, barcode, sequence_no, order_detail_id)
+            VALUES (?, ?, ?, ?)
+        ''', (order_id, barcode, sequence_no, order_detail_id))
         barcode_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -400,7 +406,11 @@ class BarcodeModel:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT * FROM barcodes WHERE order_id = ? ORDER BY sequence_no
+            SELECT b.*, d.product_name, d.color, d.thickness, d.drawing_no, d.quantity, d.sequence_no as detail_sequence_no
+            FROM barcodes b
+            LEFT JOIN order_details d ON b.order_detail_id = d.id
+            WHERE b.order_id = ? 
+            ORDER BY b.sequence_no
         ''', (order_id,))
         rows = cursor.fetchall()
         conn.close()

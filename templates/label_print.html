@@ -122,6 +122,26 @@
                         <option value="40x30">40mm × 30mm</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">页面尺寸</label>
+                    <select id="pageSize" class="form-control">
+                        <option value="A4">A4</option>
+                        <option value="A5">A5</option>
+                        <option value="A6">A6</option>
+                        <option value="custom">自定义</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row" id="customPageSize" style="display: none;">
+                <div class="form-group">
+                    <label class="form-label">页面宽度 (mm)</label>
+                    <input type="number" id="pageWidth" class="form-control" min="1" value="210">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">页面高度 (mm)</label>
+                    <input type="number" id="pageHeight" class="form-control" min="1" value="297">
+                </div>
             </div>
             
             <div class="form-row">
@@ -143,11 +163,12 @@
                 <div class="toolbox">
                     <h4>📦 元素工具箱</h4>
                     <div class="tool-item" draggable="true" data-type="text">文本</div>
-                    <div class="tool-item" draggable="true" data-type="barcode">条形码</div>
-                    <div class="tool-item" draggable="true" data-type="qrcode">二维码</div>
-                    <div class="tool-item" draggable="true" data-type="image">图片</div>
-                    <div class="tool-item" draggable="true" data-type="line">线条</div>
-                    <div class="tool-item" draggable="true" data-type="rect">矩形</div>
+                <div class="tool-item" draggable="true" data-type="barcode">条形码</div>
+                <div class="tool-item" draggable="true" data-type="qrcode">二维码</div>
+                <div class="tool-item" draggable="true" data-type="image">图片</div>
+                <div class="tool-item" draggable="true" data-type="line">线条</div>
+                <div class="tool-item" draggable="true" data-type="rect">矩形</div>
+                <div class="tool-item" draggable="true" data-type="table">表格</div>
                 </div>
                 
                 <!-- 设计区域 -->
@@ -396,6 +417,11 @@
                     element.style.width = '80px';
                     element.style.height = '50px';
                     break;
+                case 'table':
+                    element.style.width = '150px';
+                    element.style.height = '100px';
+                    element.innerHTML = '<table style="width: 100%; height: 100%; border-collapse: collapse;"><tr><td style="border: 1px solid black;">单元格1</td><td style="border: 1px solid black;">单元格2</td></tr><tr><td style="border: 1px solid black;">单元格3</td><td style="border: 1px solid black;">单元格4</td></tr></table>';
+                    break;
             }
             
             // 添加元素到模板
@@ -635,6 +661,9 @@
                         label_size: document.getElementById('labelSize').value,
                         label_count: parseInt(document.getElementById('labelCount').value) || 10,
                         print_direction: document.getElementById('printDirection').value,
+                        page_size: document.getElementById('pageSize').value,
+                        page_width: document.getElementById('pageWidth').value,
+                        page_height: document.getElementById('pageHeight').value,
                         template: JSON.stringify(templateData)
                     })
                 });
@@ -724,6 +753,24 @@
             if (orderId) {
                 loadLabelPreview(orderId);
             }
+        });
+        
+        // 页面尺寸选择事件
+        document.getElementById('pageSize').addEventListener('change', function() {
+            const customPageSize = document.getElementById('customPageSize');
+            if (this.value === 'custom') {
+                customPageSize.style.display = 'flex';
+            } else {
+                customPageSize.style.display = 'none';
+            }
+        });
+        
+        // 标签尺寸变化事件
+        document.getElementById('labelSize').addEventListener('change', function() {
+            const labelTemplate = document.getElementById('labelTemplate');
+            const size = this.value.split('x');
+            labelTemplate.style.width = size[0] + 'mm';
+            labelTemplate.style.height = size[1] + 'mm';
         });
         
         // 点击空白处取消选择

@@ -141,7 +141,7 @@ if [ ! -f "./order_system.db" ]; then
 fi
 
 echo "Starting Barcode System..."
-echo "System running at http://localhost:5001"
+echo "System running at http://localhost:8888"
 echo "Press Ctrl+C to stop service"
 echo "===================================="
 
@@ -158,7 +158,7 @@ echo "===================================="
         print("\nUsage:")
         print(f"1. Enter dist/linux/BarcodeSystem directory: cd {linux_dist_dir}")
         print("2. Run script: ./run_barcode_system.sh")
-        print("3. Access in browser: http://localhost:5001")
+        print("3. Access in browser: http://localhost:8888")
     else:
         print("\nBuild failed!")
         sys.exit(1)

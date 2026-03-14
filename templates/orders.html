@@ -39,20 +39,24 @@
                         <input type="text" class="form-control" id="workTag" placeholder="例如：泗泾不锈钢" required>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">备注 <span style="color: red;">*</span></label>
-                        <input type="text" class="form-control" id="name" placeholder="例如：第1-2批" required>
+                        <label class="form-label">备注</label>
+                        <input type="text" class="form-control" id="name" placeholder="例如：第1-2批">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">产品 <span style="color: red;">*</span></label>
-                    <input type="text" class="form-control" id="product" placeholder="例如：西#-院墙吊底964+2861" required>
+                    <label class="form-label">产品</label>
+                    <input type="text" class="form-control" id="product" placeholder="例如：西#-院墙吊底964+2861">
                 </div>
                 
                 <!-- 订单明细部分 -->
                 <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                         <h4 style="margin: 0; font-size: 16px;">订单明细</h4>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="addDetailRow()">➕ 添加明细</button>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="file" id="excelFile" accept=".xlsx, .xls" style="display: none;">
+                            <button type="button" class="btn btn-sm btn-success" onclick="document.getElementById('excelFile').click()">📊 Excel导入</button>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="addDetailRow()">➕ 添加明细</button>
+                        </div>
                     </div>
                     
                     <div id="detailsContainer">
@@ -170,7 +174,7 @@ function renderOrders(orders) {
         const hasDetails = order.details && order.details.length > 0;
         
         // 生成操作按钮
-        let actionButtons = '<button class="btn btn-sm btn-primary" onclick="viewBarcodes(' + order.id + ')">条码</button>';
+        let actionButtons = '<button class="btn btn-sm btn-primary" onclick="viewBarcodes(' + order.id + ')">打印标签</button>';
         
         // 检查编辑权限
         if (window.hasPermission && window.hasPermission('order.edit')) {
@@ -428,6 +432,132 @@ function updateDetail(index, field, value) {
     }
 }
 
+// 处理Excel文件上传
+async function handleExcelImport() {
+    const fileInput = document.getElementById('excelFile');
+    const file = fileInput.files[0];
+    if (!file) return;
+    
+    try {
+        // 检查是否已加载SheetJS
+        if (typeof XLSX === 'undefined') {
+            // 动态加载SheetJS库
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+            document.head.appendChild(script);
+            
+            await new Promise((resolve) => {
+                script.onload = resolve;
+            });
+        }
+        
+        // 读取Excel文件
+        const reader = new FileReader();
+        const data = await new Promise((resolve, reject) => {
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+        
+        // 解析Excel文件
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        
+        if (jsonData.length === 0) {
+            showAlert('Excel文件为空或格式不正确', 'warning');
+            return;
+        }
+        
+        // 映射Excel列到订单明细字段
+        const fieldMapping = {
+            '序号': 'sequence_no',
+            'sequence_no': 'sequence_no',
+            'seq': 'sequence_no',
+            '编号': 'sequence_no',
+            '品名': 'product_name',
+            '产品名称': 'product_name',
+            'product_name': 'product_name',
+            'name': 'product_name',
+            '颜色': 'color',
+            'color': 'color',
+            '板厚': 'thickness',
+            '厚度': 'thickness',
+            'thickness': 'thickness',
+            '图号': 'drawing_no',
+            '图纸号': 'drawing_no',
+            'drawing_no': 'drawing_no',
+            '数量': 'quantity',
+            '数量': 'quantity',
+            'qty': 'quantity'
+        };
+        
+        // 转换数据
+        const importedDetails = jsonData.map((row, index) => {
+            const detail = {
+                id: null,
+                sequence_no: index + 1,
+                product_name: '',
+                color: '',
+                thickness: '',
+                drawing_no: '',
+                quantity: 1
+            };
+            
+            // 映射字段
+            Object.keys(row).forEach(key => {
+                const normalizedKey = key.trim();
+                const field = fieldMapping[normalizedKey];
+                if (field) {
+                    const value = row[key];
+                    if (field === 'sequence_no' || field === 'quantity') {
+                        detail[field] = parseInt(value) || 0;
+                    } else {
+                        detail[field] = String(value || '').trim();
+                    }
+                }
+            });
+            
+            return detail;
+        }).filter(detail => detail.product_name || detail.quantity > 0);
+        
+        if (importedDetails.length === 0) {
+            showAlert('Excel文件中没有有效的订单明细数据', 'warning');
+            return;
+        }
+        
+        // 合并或替换现有明细
+        if (orderDetails.length > 0) {
+            if (confirm('当前已有订单明细，是否替换为Excel中的数据？')) {
+                orderDetails = importedDetails;
+            } else {
+                orderDetails = [...orderDetails, ...importedDetails];
+            }
+        } else {
+            orderDetails = importedDetails;
+        }
+        
+        // 更新序号计数器
+        if (orderDetails.length > 0) {
+            detailSequenceCounter = Math.max(...orderDetails.map(d => d.sequence_no)) + 1;
+        }
+        
+        renderOrderDetails();
+        showAlert(`成功导入 ${importedDetails.length} 条订单明细`, 'success');
+        
+    } catch (error) {
+        console.error('Excel导入失败:', error);
+        showAlert('Excel导入失败：' + error.message, 'danger');
+    } finally {
+        // 重置文件输入
+        fileInput.value = '';
+    }
+}
+
+// 添加Excel文件上传事件监听器
+document.getElementById('excelFile').addEventListener('change', handleExcelImport);
+
 // 保存订单
 async function saveOrder() {
     const form = document.getElementById('orderForm');
@@ -526,8 +656,8 @@ async function deleteOrder(orderId) {
 
 // 查看条码
 function viewBarcodes(orderId) {
-    // 跳转到条码页面
-    window.location.href = `/barcodes/${orderId}`;
+    // 跳转到打印标签页面
+    window.location.href = `/print-label/${orderId}`;
 }
 
 // 页面加载时执行

@@ -1,0 +1,67 @@
+{
+  "elements": [
+    {
+      "type": "text",
+      "x": 10,
+      "y": 10,
+      "width": 160,
+      "height": 20,
+      "content": "工程名称: {{order.work_tag}}"
+    },
+    {
+      "type": "text",
+      "x": 10,
+      "y": 30,
+      "width": 70,
+      "height": 20,
+      "content": "序号: {{barcode.sequence_no}}"
+    },
+    {
+      "type": "text",
+      "x": 90,
+      "y": 30,
+      "width": 70,
+      "height": 20,
+      "content": "颜色: {{order.color}}"
+    },
+    {
+      "type": "text",
+      "x": 10,
+      "y": 50,
+      "width": 70,
+      "height": 20,
+      "content": "数量: {{order.quantity}}"
+    },
+    {
+      "type": "text",
+      "x": 90,
+      "y": 50,
+      "width": 70,
+      "height": 20,
+      "content": "图号: {{order.drawing_no}}"
+    },
+    {
+      "type": "text",
+      "x": 10,
+      "y": 70,
+      "width": 160,
+      "height": 20,
+      "content": "产品编号: {{order.product}}"
+    },
+    {
+      "type": "barcode",
+      "x": 10,
+      "y": 90,
+      "width": 160,
+      "height": 40
+    },
+    {
+      "type": "text",
+      "x": 10,
+      "y": 130,
+      "width": 160,
+      "height": 20,
+      "content": "{{barcode.barcode}}"
+    }
+  ]
+}

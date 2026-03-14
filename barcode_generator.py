@@ -70,6 +70,12 @@ def create_barcodes_for_order(order_id: int, order_details: List[Dict]) -> List[
     
     for detail in order_details:
         quantity = detail.get('quantity', 1)
+        detail_id = detail.get('id')  # 获取订单明细ID
+        detail_sequence = detail.get('quantity', 0)  # 获取订单明细数量
+        
+        # 为每个订单明细重新开始条码序号计数
+        detail_barcode_seq = 1
+        
         for _ in range(quantity):
             # 生成条码编号
             barcode_number = generate_barcode_number(order_id, sequence_no)
@@ -78,17 +84,23 @@ def create_barcodes_for_order(order_id: int, order_details: List[Dict]) -> List[
             filename = f"order_{order_id}_seq_{sequence_no}"
             image_path = generate_barcode_image(barcode_number, filename)
             
-            # 保存到数据库
-            barcode_id = BarcodeModel.create(order_id, barcode_number, sequence_no)
+            # 保存到数据库（包含order_detail_id）
+            barcode_id = BarcodeModel.create(order_id, barcode_number, sequence_no, detail_id)
+            
+            # 生成条码序号：订单明细序号/条码在当前明细中的序号
+            barcode_sequence = f"{detail_sequence}/{detail_barcode_seq}"
             
             barcodes.append({
                 'id': barcode_id,
                 'order_id': order_id,
                 'barcode': barcode_number,
                 'sequence_no': sequence_no,
+                'order_detail_id': detail_id,
+                'barcode_sequence': barcode_sequence,
                 'image_path': image_path
             })
             sequence_no += 1
+            detail_barcode_seq += 1
     
     return barcodes
 

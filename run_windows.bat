@@ -12,8 +12,8 @@ echo Starting system...
 echo Please wait...
 echo
 echo [INFO] System will auto open browser at:
-echo http://127.0.0.1:888
-echo
+echo http://127.0.0.1:8888
+echo.
 echo [INFO] Features:
 echo   - Order Management: Create, edit, delete orders
 echo   - Barcode Generation: Auto-generate unique barcodes
@@ -23,7 +23,7 @@ echo   - Reports: Generate order statistics
 echo
 echo [WARNING] Notes:
 echo   - First run may need to install dependencies
-echo   - Ensure port 888 is not in use
+echo   - Ensure port 8888 is not in use
 echo   - Press Ctrl+C to stop server
 echo =============================================================
 echo
@@ -52,9 +52,13 @@ if %errorlevel% neq 0 (
     echo
 )
 
+REM Open browser
+echo [INFO] Opening browser...
+start http://127.0.0.1:8888
+
 REM Run system
 echo [INFO] Starting server...
 echo
-python start.py
+python app.py
 
 pause

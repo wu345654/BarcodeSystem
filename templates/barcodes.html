@@ -8,7 +8,6 @@
         <h2 class="card-title">🏷️ 订单条码列表</h2>
         <div style="display: flex; gap: 10px;">
             <button class="btn btn-secondary" onclick="loadBarcodes()">🔄 刷新</button>
-            <button class="btn btn-primary print-all-button">🖨️ 打印全部</button>
             <a href="/print-label/{{ order_id }}" class="btn btn-success">🏷️ 打印标签</a>
             <a href="/orders" class="btn btn-secondary">返回订单</a>
         </div>
@@ -235,112 +234,7 @@ function printBarcode(imagePath) {
         });
 }
 
-// 打印全部条码
-function printAllBarcodes() {
-    try {
-        console.log('printAllBarcodes function called');
-        
-        // 检查orderId是否存在
-        console.log('orderId:', orderId);
-        if (!orderId) {
-            console.error('orderId is not defined');
-            showAlert('订单ID未定义', 'danger');
-            return;
-        }
-        
-        const barcodeItems = document.querySelectorAll('.barcode-item img');
-        console.log('Found barcode items:', barcodeItems.length);
-        
-        if (barcodeItems.length === 0) {
-            showAlert('没有可打印的条码', 'warning');
-            return;
-        }
-        
-        // 使用全局orderId变量
-        console.log('printAllBarcodes called with orderId:', orderId);
-        
-        // 加载订单信息
-        const apiUrl = `/api/orders/${orderId}/barcodes`;
-        console.log('Fetching data from:', apiUrl);
-        
-        fetch(apiUrl)
-            .then(response => {
-                console.log('Response status:', response.status);
-                if (!response.ok) {
-                    throw new Error('网络响应错误: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(result => {
-                console.log('API response:', result);
-                if (result.success) {
-                    const order = result.data.order;
-                    const barcodes = result.data.barcodes;
-                    console.log('Found order:', order);
-                    console.log('Found barcodes:', barcodes.length);
-                    
-                    // 构建打印内容
-                    let printContent = '<!DOCTYPE html><html><head><title>打印条码标签</title><style>body{font-family:Arial,sans-serif;margin:0;padding:20px;}.label{width:80mm;height:50mm;border:1px solid #000;padding:3mm;margin-bottom:10mm;page-break-after:always;font-size:9px;box-sizing:border-box;}.label table{width:100%;border-collapse:collapse;height:100%;}.label td{border:1px solid #000;padding:1px;}.label .barcode-cell{text-align:center;padding:2mm;}.label .barcode-cell img{max-width:95%;height:25mm;}.label .barcode-text{margin-top:2px;font-size:7px;}</style></head><body>';
-                    
-                    // 转义HTML特殊字符
-                    function escapeHtml(text) {
-                        return text
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;')
-                            .replace(/"/g, '&quot;')
-                            .replace(/'/g, '&#039;');
-                    }
-                    
-                    // 添加每个标签
-                    barcodes.forEach(barcode => {
-                        printContent += '<div class="label"><table>';
-                        // 第一行：工程名称
-                        printContent += '<tr><td>工程名称</td><td colspan="1">' + escapeHtml(order.work_tag || '') + '</td></tr>';
-                        // 第二行：序号和颜色
-                        printContent += '<tr><td>序号</td><td>' + escapeHtml(barcode.sequence_no.toString()) + '</td><td>颜色</td><td>' + escapeHtml(order.color || '-') + '</td></tr>';
-                        // 第三行：数量和图号
-                        printContent += '<tr><td>数量</td><td>1/1</td><td>图号</td><td>' + escapeHtml(order.drawing_no || '-') + '</td></tr>';
-                        // 第四行：产品编码
-                        printContent += '<tr><td>产品编码</td><td colspan="1">' + escapeHtml(order.product || '-') + '</td></tr>';
-                        // 第五行：条码
-                        printContent += '<tr><td colspan="4" class="barcode-cell"><img src="/static/barcodes/order_' + orderId + '_seq_' + barcode.sequence_no + '.png"><div class="barcode-text">NO.' + barcode.id + '</div></td></tr>';
-                        printContent += '</table></div>';
-                    });
-                    
-                    printContent += '</body></html>';
-                    
-                    // 创建一个新窗口用于打印
-                    const printWindow = window.open('', '_blank');
-                    
-                    // 检查窗口是否被阻止
-                    if (!printWindow) {
-                        showAlert('请允许弹出窗口以打印条码标签', 'warning');
-                        return;
-                    }
-                    
-                    // 写入打印内容
-                    printWindow.document.write(printContent);
-                    printWindow.document.close();
-                    
-                    // 等待窗口加载完成后打印
-                    printWindow.onload = function() {
-                        printWindow.print();
-                    };
-                } else {
-                    console.error('API returned error:', result.message);
-                    showAlert('加载数据失败: ' + result.message, 'danger');
-                }
-            })
-            .catch(error => {
-                console.error('加载数据失败:', error);
-                showAlert('加载数据失败: ' + error.message, 'danger');
-            });
-    } catch (error) {
-        console.error('printAllBarcodes error:', error);
-        showAlert('打印失败: ' + error.message, 'danger');
-    }
-}
+
 
 // 下载条码
 function downloadBarcode(imagePath, barcode) {
@@ -382,10 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
             printBarcode(imagePath);
         }
         
-        // 处理打印全部按钮点击
-        if (e.target.classList.contains('print-all-button')) {
-            printAllBarcodes();
-        }
+
     });
 });
 </script>

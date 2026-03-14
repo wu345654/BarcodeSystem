@@ -175,8 +175,8 @@
                                 <th style="width: 80px;">板厚</th>
                                 <th style="width: 80px;">计量</th>
                                 <th style="width: 80px;">数量</th>
-                                <th style="width: 80px;">单件</th>
-                                <th style="width: 80px;">总量</th>
+                                <th style="width: 80px;">单件面积</th>
+                                <th style="width: 80px;">总面积</th>
                                 <th style="width: 120px;">单件开槽(米)</th>
                                 <th style="width: 120px;">总开槽(米)</th>
                                 <th style="width: 80px;">操作</th>
@@ -302,7 +302,6 @@
                         <i class="fas fa-trash"></i>
                     </button>
                     <button class="btn btn-sm btn-success" onclick="exportDeliveryOrder(${item.id})"><i class="fas fa-file-excel"></i></button>
-                    <button class="btn btn-sm btn-primary" onclick="printDeliveryOrder(${item.id})"><i class="fas fa-print"></i></button>
                 </td>
             </tr>
             <tr class="delivery-order-details-row" id="details-row-${item.id}" style="display: none;">
@@ -319,8 +318,8 @@
                                     <th>板厚</th>
                                     <th>计量</th>
                                     <th>数量</th>
-                                    <th>单件</th>
-                                    <th>总量</th>
+                                    <th>单件面积</th>
+                                    <th>总面积</th>
                                     <th>单件开槽(米)</th>
                                     <th>总开槽(米)</th>
                                 </tr>
@@ -626,7 +625,7 @@
             
             if (data.success) {
                 showAlert('保存成功', 'success');
-                $('#deliveryOrderModal').modal('hide');
+                closeDeliveryOrderModal();
                 loadDeliveryOrders(currentPage);
             } else {
                 showAlert(data.message, 'danger');
@@ -684,7 +683,7 @@
                 </td>
                 <td>
                     <input type="number" class="form-control form-control-sm" value="${detail.quantity || 0}" 
-                        onchange="updateDetail(${index}, 'quantity', this.value); calculateTotal(${index})" style="font-size: 12px; -moz-appearance: textfield; appearance: textfield; border: 1px solid #e0e0e0; padding: 3px 6px;">
+                        onchange="updateDetail(${index}, 'quantity', this.value); calculateTotal(${index}); calculateTotalGroove(${index})" style="font-size: 12px; -moz-appearance: textfield; appearance: textfield; border: 1px solid #e0e0e0; padding: 3px 6px;">
                 </td>
                 <td>
                     <input type="number" class="form-control form-control-sm" value="${detail.single_weight || ''}" step="0.01"
@@ -921,25 +920,7 @@
         }
     }
 
-    // 打印出库单
-    async function printDeliveryOrder(id) {
-        try {
-            const response = await fetch(`/api/delivery-orders/${id}/print`, {
-                method: 'POST'
-            });
-            const data = await response.json();
-            
-            if (data.success) {
-                window.open(data.data.pdf_url, '_blank');
-                showAlert('生成PDF成功', 'success');
-            } else {
-                showAlert(data.message, 'danger');
-            }
-        } catch (error) {
-            console.error('生成PDF失败:', error);
-            showAlert('生成PDF失败', 'danger');
-        }
-    }
+
 
     // 搜索
     document.getElementById('searchBtn').addEventListener('click', function() {
